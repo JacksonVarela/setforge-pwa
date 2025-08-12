@@ -3,12 +3,10 @@ import { initializeApp, getApps } from "firebase/app";
 
 export function initFirebaseApp() {
   const cfg = {
-    apiKey: "AIzaSyDAud4CscB0f-xwQZZDC0xX6LN4RhemvYg",
-    authDomain: "setforge-7c5ce.firebaseapp.com",
-    projectId: "setforge-7c5ce",
-    storageBucket: "setforge-7c5ce.firebasestorage.app",
-    messagingSenderId: "727053846381",
-    appId: "1:727053846381:web:d831e7f627ccf08721fc64",
+    apiKey: import.meta.env.VITE_FB_API_KEY,
+    authDomain: import.meta.env.VITE_FB_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_FB_PROJECT_ID,
+    appId: import.meta.env.VITE_FB_APP_ID,
   };
   if (!getApps().length) initializeApp(cfg);
 }

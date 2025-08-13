@@ -18,16 +18,16 @@ export default async function handler(req, res) {
 }
 Rules:
 - Detect headings vs exercises.
-- For exercises, if you see "3x8–12" or "3 × 8–12", map to sets/low/high.
-- If failure is specified, set low/high both to "failure" (string).
-- Be tolerant to weird punctuation. Return ONLY JSON.`},
+- For exercises, parse "3x8–12" or "3 × 8–12" into sets/low/high.
+- If explicitly "failure", set both low & high to the string "failure".
+- Be tolerant to punctuation. Return ONLY JSON.` },
         { role: "user", content: text }
       ]
     };
 
     const r = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type":"application/json" },
+      headers: { Authorization:`Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type":"application/json" },
       body: JSON.stringify(body),
     });
     const j = await r.json();

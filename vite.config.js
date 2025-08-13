@@ -1,3 +1,4 @@
+// vite.config.js
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -7,7 +8,16 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icons/icon-192.png','icons/icon-512.png','icons/maskable-192.png','icons/maskable-512.png'],
+      includeAssets: [
+        'icons/icon-192.png',
+        'icons/icon-512.png',
+        'icons/maskable-192.png',
+        'icons/maskable-512.png',
+        // 👇 add these
+        'images/bg-anime-login.png',
+        'images/bg-anime-import.png',
+        'images/coach-sticker.png'
+      ],
       manifest: {
         name: 'SetForge — Lift Tracker',
         short_name: 'SetForge',
@@ -23,9 +33,7 @@ export default defineConfig({
           { src: 'icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
         ]
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-      }
+      workbox: { globPatterns: ['**/*.{js,css,html,ico,png,svg}'] }
     })
   ]
 })

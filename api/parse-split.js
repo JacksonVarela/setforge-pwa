@@ -95,4 +95,26 @@ export default async function handler(req, res) {
       aiDays = (json?.days || []).map((d) => ({
         id: cryptoRandom(),
         name: String(d.name || "").trim() || "DAY",
-        exercises: (d.exercises || []).map((e)
+        exercises: (d.exercises || []).map((e) => ({
+          name: String(e.name || "").trim(),
+          sets: Number(e.sets || 3),
+          low: Number(e.low || 8),
+          high: Number(e.high || e.low || 12),
+          cat: hGuessCat(String(e.name || "")),
+          equip: hGuessEquip(String(e.name || "")),
+        })),
+      }));
+    } catch {}
+
+    const days = aiDays.length ? aiDays : localParse(text);
+    return res.status(200).json({ ok: true, days });
+  } catch (e) {
+    return res.status(200).json({ ok: false, days: [] });
+  }
+}
+
+async function readJSON(req) {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+}

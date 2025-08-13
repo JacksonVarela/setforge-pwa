@@ -1,24 +1,22 @@
-// /api/coach-chat.js
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
-  try {
-    const { messages = [], mode = "training", units = "lb" } = await readJSON(req);
+  if (req.method !== "POST") return res.status(405).json({ ok:false, error:"POST only" });
 
-    const system = [
-      "You are SetForge Coach — an evidence-based hypertrophy assistant (Israetel/Nippard vibe).",
-      "Be concise, practical, and cite principles casually (not formal citations).",
-      "Stay within mainstream, peer-reviewed direction. Avoid medical claims.",
-      "You can also answer app navigation questions (how to use tabs, import, logging).",
-      `Use units: ${units}.`,
-      mode === "app"
-        ? "Focus on helping the user navigate and use the SetForge app features."
-        : "Focus on muscle growth programming, progression, and form tips."
-    ].join(" ");
+  try {
+    const { messages = [], appState = {} } = await readJSON(req);
+
+    const system = `You are SetForge Coach: an evidence-based hypertrophy coach.
+- Be concise and specific (max ~120 words).
+- You may suggest steps inside the app (like "Go to Split → Import" or "Open Log tab"), but do NOT hallucinate features.
+- If asked to change the app state, reply with a JSON action like {"action":"NAVIGATE","to":"log"} or {"action":"ADD_EXERCISE","name":"Incline DB Press"}, then add a one-line explanation.`;
 
     const body = {
       model: "gpt-4o-mini",
-      messages: [{ role: "system", content: system }].concat(messages || []),
-      temperature: 0.4,
+      temperature: 0.3,
+      messages: [
+        { role: "system", content: system },
+        ...messages,
+        { role: "user", content: `Current appState:\n${JSON.stringify(appState)}` }
+      ]
     };
 
     const r = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -31,10 +29,10 @@ export default async function handler(req, res) {
     });
 
     const j = await r.json();
-    const reply = j?.choices?.[0]?.message?.content || "Sorry, I didn’t catch that.";
-    return res.status(200).json({ ok: true, reply });
+    const text = j?.choices?.[0]?.message?.content?.trim() || "";
+    res.status(200).json({ ok:true, text });
   } catch (e) {
-    return res.status(200).json({ ok: false, reply: "Coach is unavailable right now." });
+    res.status(200).json({ ok:false, text:"" });
   }
 }
 

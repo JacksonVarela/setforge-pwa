@@ -1,7 +1,29 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* src/index.css */
+:root { color-scheme: dark; }
+html, body, #root { height: 100%; }
+body { margin: 0; background: #0a0a0a; color: #e5e5e5; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell; }
 
-html, body, #root {
-  height: 100%;
+/* Login page anime background */
+.bg-login {
+  background-image: url("/images/bg-anime-login.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* Import page anime background */
+.bg-import {
+  background-image: url("/images/bg-anime-import.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* Coach sticker (used on chat, import, etc) */
+.coach-sticker {
+  background-image: url("/images/coach-sticker.png");
+  background-size: contain;
+  background-position: bottom right;
+  background-repeat: no-repeat;
+  pointer-events: none;
 }

@@ -8,16 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: [
-        'icons/icon-192.png',
-        'icons/icon-512.png',
-        'icons/maskable-192.png',
-        'icons/maskable-512.png',
-        // 👇 add these
-        'images/bg-anime-login.png',
-        'images/bg-anime-import.png',
-        'images/coach-sticker.png'
-      ],
+      includeAssets: ['icons/icon-192.png','icons/icon-512.png','icons/maskable-192.png','icons/maskable-512.png'],
       manifest: {
         name: 'SetForge — Lift Tracker',
         short_name: 'SetForge',
@@ -33,7 +24,15 @@ export default defineConfig({
           { src: 'icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
         ]
       },
-      workbox: { globPatterns: ['**/*.{js,css,html,ico,png,svg}'] }
+      workbox: {
+        // modest bump to avoid future surprises
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        // prefer modern assets; webp included
+        globPatterns: ['**/*.{js,css,html,ico,svg,webp,png,woff2}'],
+      }
     })
-  ]
+  ],
+  build: {
+    chunkSizeWarningLimit: 1500
+  }
 })

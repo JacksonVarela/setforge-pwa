@@ -1,19 +1,26 @@
-// /api/coach-chat.js (ESM)
+// /api/coach-chat.js
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
   try {
-    const { messages = [], question = "" } = await readJSON(req);
-    const system = `You are "Coach Kitsu", a friendly evidence-based hypertrophy coach.
-Keep it practical, peer-reviewed, concise. Avoid medical claims.`;
+    const { messages = [], mode = "training", units = "lb" } = await readJSON(req);
+
+    const system = [
+      "You are SetForge Coach — an evidence-based hypertrophy assistant (Israetel/Nippard vibe).",
+      "Be concise, practical, and cite principles casually (not formal citations).",
+      "Stay within mainstream, peer-reviewed direction. Avoid medical claims.",
+      "You can also answer app navigation questions (how to use tabs, import, logging).",
+      `Use units: ${units}.`,
+      mode === "app"
+        ? "Focus on helping the user navigate and use the SetForge app features."
+        : "Focus on muscle growth programming, progression, and form tips."
+    ].join(" ");
+
     const body = {
       model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: system },
-        ...messages,
-        ...(question ? [{ role: "user", content: question }] : []),
-      ],
+      messages: [{ role: "system", content: system }].concat(messages || []),
       temperature: 0.4,
     };
+
     const r = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -22,10 +29,12 @@ Keep it practical, peer-reviewed, concise. Avoid medical claims.`;
       },
       body: JSON.stringify(body),
     });
+
     const j = await r.json();
-    return res.status(200).json({ ok: true, text: j?.choices?.[0]?.message?.content || "" });
+    const reply = j?.choices?.[0]?.message?.content || "Sorry, I didn’t catch that.";
+    return res.status(200).json({ ok: true, reply });
   } catch (e) {
-    return res.status(200).json({ ok: false, text: "" });
+    return res.status(200).json({ ok: false, reply: "Coach is unavailable right now." });
   }
 }
 

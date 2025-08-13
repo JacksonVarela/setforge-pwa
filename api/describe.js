@@ -1,30 +1,36 @@
-// api/describe.js
+// /api/describe.js
 export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
   try {
-    const { exercise } = req.body || {};
-    const system = `You explain gym exercises briefly for hypertrophy. 
-Keep it under 80 words. Include 2–3 precise cues (e.g., brace, slow eccentric), 
-and note common attachments/handles if relevant. If unclear, say "Unknown."`;
+    const { name = "", equip = "machine", cat = "iso_small" } = await readJSON(req);
+    const prompt = `Write a concise how-to for: "${name}".
+Category: ${cat}. Equipment: ${equip}.
+Goal: hypertrophy. Max 90 words. Include 3 short bullet cues and 1 common mistake. No emojis.`;
     const body = {
       model: "gpt-4o-mini",
-      temperature: 0.2,
       messages: [
-        { role: "system", content: system },
-        { role: "user", content: `Exercise: ${exercise || "Unknown"}` }
+        { role: "system", content: "You explain exercises clearly and briefly." },
+        { role: "user", content: prompt },
       ],
+      temperature: 0.4,
     };
     const r = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
     });
     const j = await r.json();
-    const text = j?.choices?.[0]?.message?.content?.trim() || "Unknown";
-    return res.status(200).json({ ok: true, text });
+    res.status(200).json({ ok: true, text: j?.choices?.[0]?.message?.content || "" });
   } catch (e) {
-    return res.status(200).json({ ok: false, text: "Unknown" });
+    res.status(200).json({ ok: false, text: "" });
   }
+}
+
+async function readJSON(req) {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }

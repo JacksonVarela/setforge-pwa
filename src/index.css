@@ -1,123 +1,202 @@
-/* Tailwind layers */
+/* src/index.css */
+
+/* Tailwind base */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Base tweaks */
+/* =========
+   Base theme
+   ========= */
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --bg-2: #111213;
+  --text: #f5f5f5;
+  --muted: #a3a3a3;
+  --accent: #ef4444; /* red-500 */
+  --card: #121212;
+  --border: #2a2a2a;
+}
+
 html, body, #root {
   height: 100%;
 }
-body {
-  @apply bg-neutral-900 text-neutral-100 antialiased;
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
 }
 
-/* --------- Backgrounds --------- */
-/* Full-bleed anime backgrounds for Auth and Import screens */
+/* Helpful utility to make a full-height section */
+.fullscreen {
+  min-height: 100svh; /* supports mobile safe height */
+}
+
+/* =========
+   Anime backgrounds (webp)
+   Apply these to a top-level wrapper on the relevant screens
+   ========= */
 .bg-login {
-  background-image: url('/images/bg-anime-login.png');
+  background-image: url('/images/bg-anime-login.webp');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 }
 
 .bg-import {
-  background-image: url('/images/bg-anime-import.png');
+  background-image: url('/images/bg-anime-import.webp');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 }
 
-/* A subtle dark gradient overlay you can put over image bgs if text needs contrast */
-.bg-overlay {
-  background: linear-gradient(180deg, rgba(10,10,10,0.65), rgba(10,10,10,0.9));
+/* Subtle dark vignette overlay for readability over busy art */
+.anime-overlay {
+  position: relative;
 }
 
-/* Sticker for the coach character (bottom-right). We only show it on some screens. */
-.coach-sticker {
-  position: fixed;
-  right: 12px;
-  bottom: 12px;
-  width: 120px;
-  height: auto;
-  opacity: 0.9;
-  pointer-events: none; /* so taps go through on mobile */
-  z-index: 40;
-}
-
-/* --------- Cards & utility helpers --------- */
-.sf-card {
-  /* glassy dark card that still works offline/lightweight */
-  background: rgba(17,17,17, 0.75);
-  border: 1px solid #2a2a2a;
-  border-radius: 16px;
-  backdrop-filter: blur(6px);
-}
-
-.sf-input {
-  @apply px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-sm;
-}
-
-.sf-btn {
-  @apply px-3 py-2 rounded-xl text-sm;
-}
-
-.sf-btn-primary {
-  @apply bg-white text-neutral-900;
-}
-.sf-btn-ghost {
-  @apply bg-neutral-800 border border-neutral-700;
-}
-
-/* Divider text (small, subtle) */
-.sf-subtle {
-  @apply text-[11px] text-neutral-400;
-}
-
-/* --------- Modal (Tags picker, etc.) --------- */
-.modal-backdrop {
-  position: fixed;
+.anime-overlay::after {
+  content: "";
+  position: absolute;
   inset: 0;
-  background: rgba(0,0,0,0.55);
-  backdrop-filter: blur(2px);
-  z-index: 50;
-}
-.modal-card {
-  max-width: 560px;
-  width: calc(100% - 32px);
-  margin: 48px auto;
-  background: #111;
-  border: 1px solid #2a2a2a;
-  border-radius: 14px;
-  padding: 16px;
+  pointer-events: none;
+  background: radial-gradient(
+      120% 90% at 50% 10%,
+      rgba(0,0,0,0.15) 0%,
+      rgba(0,0,0,0.35) 45%,
+      rgba(0,0,0,0.65) 100%
+    );
 }
 
-/* Hide scrollbar on small modal tag grids (still scrollable) */
-.hide-scrollbar {
-  -ms-overflow-style: none;  /* IE/Edge */
-  scrollbar-width: none;     /* Firefox */
-}
-.hide-scrollbar::-webkit-scrollbar {
-  display: none;             /* Chrome/Safari */
+/* Put your content above the overlay */
+.anime-overlay > * {
+  position: relative;
+  z-index: 1;
 }
 
-/* --------- Small chips --------- */
-.chip {
-  @apply px-2 py-1 rounded-lg border text-xs;
-}
-.chip-on {
-  @apply bg-white text-neutral-900 border-white;
-}
-.chip-off {
-  @apply bg-neutral-800 border-neutral-700;
+/* =========
+   Coach sticker / avatar (optional)
+   Use with: <div class="coach-sticker"></div>
+   Position container should be relative (e.g., wrapper has 'relative')
+   ========= */
+.coach-sticker {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  width: clamp(84px, 26vw, 160px);
+  aspect-ratio: 1/1;
+  background-image: url('/images/coach-sticker.webp'); /* or .png if you prefer */
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: drop-shadow(0 6px 14px rgba(0,0,0,0.45));
+  animation: floaty 5.5s ease-in-out infinite;
+  pointer-events: none; /* decorative */
 }
 
-/* A tiny muted caption next to labels */
-.caption {
-  @apply text-[10px] text-neutral-500;
+@keyframes floaty {
+  0%   { transform: translateY(0px);   }
+  50%  { transform: translateY(-6px);  }
+  100% { transform: translateY(0px);   }
 }
 
-/* Simple focus ring for keyboard users */
-*:focus-visible {
-  outline: 2px solid #ffffff;
-  outline-offset: 2px;
+/* =========
+   “Glass” card helpers (nice over art)
+   ========= */
+.glass {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background: rgba(10,10,10,0.55);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 0.9rem;
+}
+
+.glass-strong {
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  background: rgba(10,10,10,0.72);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 1rem;
+}
+
+/* =========
+   Buttons (optional helpers; Tailwind still works)
+   ========= */
+.btn {
+  @apply inline-flex items-center justify-center px-3 py-2 rounded-xl text-sm border transition;
+  background: #181818;
+  border-color: var(--border);
+}
+
+.btn:hover {
+  background: #1f1f1f;
+}
+
+.btn-primary {
+  background: #ffffff;
+  color: #111;
+  border-color: #ffffff;
+}
+
+.btn-primary:hover {
+  filter: brightness(0.96);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--border);
+}
+
+/* Small pill label */
+.pill {
+  @apply inline-flex items-center px-2 py-1 rounded-lg text-xs;
+  background: #1a1a1a;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+/* Inputs (optional helpers; Tailwind still works) */
+.input {
+  @apply w-full px-3 py-2 rounded-lg text-sm;
+  background: #141414;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.input::placeholder {
+  color: #7a7a7a;
+}
+
+/* Scrollbar (desktop polish) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3a3a3a transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+  border-radius: 999px;
+}
+
+/* =========
+   Safe padding for mobile notches
+   ========= */
+.safe-px {
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+}
+
+.safe-pt {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+
+.safe-pb {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }

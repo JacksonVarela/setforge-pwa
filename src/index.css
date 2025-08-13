@@ -1,29 +1,123 @@
-/* src/index.css */
-:root { color-scheme: dark; }
-html, body, #root { height: 100%; }
-body { margin: 0; background: #0a0a0a; color: #e5e5e5; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell; }
+/* Tailwind layers */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Login page anime background */
+/* Base tweaks */
+html, body, #root {
+  height: 100%;
+}
+body {
+  @apply bg-neutral-900 text-neutral-100 antialiased;
+}
+
+/* --------- Backgrounds --------- */
+/* Full-bleed anime backgrounds for Auth and Import screens */
 .bg-login {
-  background-image: url("/images/bg-anime-login.png");
+  background-image: url('/images/bg-anime-login.png');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 }
 
-/* Import page anime background */
 .bg-import {
-  background-image: url("/images/bg-anime-import.png");
+  background-image: url('/images/bg-anime-import.png');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 }
 
-/* Coach sticker (used on chat, import, etc) */
+/* A subtle dark gradient overlay you can put over image bgs if text needs contrast */
+.bg-overlay {
+  background: linear-gradient(180deg, rgba(10,10,10,0.65), rgba(10,10,10,0.9));
+}
+
+/* Sticker for the coach character (bottom-right). We only show it on some screens. */
 .coach-sticker {
-  background-image: url("/images/coach-sticker.png");
-  background-size: contain;
-  background-position: bottom right;
-  background-repeat: no-repeat;
-  pointer-events: none;
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  width: 120px;
+  height: auto;
+  opacity: 0.9;
+  pointer-events: none; /* so taps go through on mobile */
+  z-index: 40;
+}
+
+/* --------- Cards & utility helpers --------- */
+.sf-card {
+  /* glassy dark card that still works offline/lightweight */
+  background: rgba(17,17,17, 0.75);
+  border: 1px solid #2a2a2a;
+  border-radius: 16px;
+  backdrop-filter: blur(6px);
+}
+
+.sf-input {
+  @apply px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-sm;
+}
+
+.sf-btn {
+  @apply px-3 py-2 rounded-xl text-sm;
+}
+
+.sf-btn-primary {
+  @apply bg-white text-neutral-900;
+}
+.sf-btn-ghost {
+  @apply bg-neutral-800 border border-neutral-700;
+}
+
+/* Divider text (small, subtle) */
+.sf-subtle {
+  @apply text-[11px] text-neutral-400;
+}
+
+/* --------- Modal (Tags picker, etc.) --------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(2px);
+  z-index: 50;
+}
+.modal-card {
+  max-width: 560px;
+  width: calc(100% - 32px);
+  margin: 48px auto;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 14px;
+  padding: 16px;
+}
+
+/* Hide scrollbar on small modal tag grids (still scrollable) */
+.hide-scrollbar {
+  -ms-overflow-style: none;  /* IE/Edge */
+  scrollbar-width: none;     /* Firefox */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;             /* Chrome/Safari */
+}
+
+/* --------- Small chips --------- */
+.chip {
+  @apply px-2 py-1 rounded-lg border text-xs;
+}
+.chip-on {
+  @apply bg-white text-neutral-900 border-white;
+}
+.chip-off {
+  @apply bg-neutral-800 border-neutral-700;
+}
+
+/* A tiny muted caption next to labels */
+.caption {
+  @apply text-[10px] text-neutral-500;
+}
+
+/* Simple focus ring for keyboard users */
+*:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
 }

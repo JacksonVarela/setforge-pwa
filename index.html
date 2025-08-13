@@ -2,13 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0a0a0a" />
     <link rel="icon" href="/icons/icon-192.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <title>SetForge — Lift Tracker</title>
   </head>
-  <body class="bg-neutral-900">
-    <div id="root"></div>
+  <body>
+    <!-- We’ll toggle bg classes from App: bg-login / bg-import / subtle overlay -->
+    <div id="root" class="fullscreen safe-px safe-pt safe-pb"></div>
+
+    <noscript>
+      <style>body{background:#0a0a0a;color:#f5f5f5;font-family:system-ui,Segoe UI,Roboto,Inter,Arial}</style>
+      <div style="max-width:680px;margin:48px auto;padding:16px;border:1px solid #2a2a2a;border-radius:12px">
+        JavaScript is required to run SetForge.
+      </div>
+    </noscript>
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

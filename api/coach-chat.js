@@ -1,41 +1,36 @@
+// /api/coach-chat.js (ESM)
 export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
   try {
-    const { question, units, recent } = req.body || {};
-    const system = `You are a concise, evidence-based hypertrophy coach.
-- Prioritize muscle growth, recovery, progression, exercise selection & technique.
-- Cite principles (MEV/MRV concepts, rep ranges, double progression) without formal citations.
-- When macros are asked: give protein 1.6–2.2 g/kg, simple carb/fat guidance; mention total calories.
-- Keep answers ~120 words unless asked to expand.
-- Units: ${units||"lb"}.`;
-
-    const userMsg = {
-      question: String(question||""),
-      context: {
-        recent_sessions: Array.isArray(recent) ? recent.slice(0,6) : []
-      }
-    };
-
+    const { messages = [], question = "" } = await readJSON(req);
+    const system = `You are "Coach Kitsu", a friendly evidence-based hypertrophy coach.
+Keep it practical, peer-reviewed, concise. Avoid medical claims.`;
     const body = {
       model: "gpt-4o-mini",
-      temperature: 0.2,
       messages: [
         { role: "system", content: system },
-        { role: "user", content: JSON.stringify(userMsg) },
+        ...messages,
+        ...(question ? [{ role: "user", content: question }] : []),
       ],
+      temperature: 0.4,
     };
-
     const r = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
     });
     const j = await r.json();
-    const reply = j?.choices?.[0]?.message?.content?.trim() || "…";
-    return res.status(200).json({ ok: true, reply });
+    return res.status(200).json({ ok: true, text: j?.choices?.[0]?.message?.content || "" });
   } catch (e) {
-    return res.status(200).json({ ok: false, reply: "Error. Try again." });
+    return res.status(200).json({ ok: false, text: "" });
   }
+}
+
+async function readJSON(req) {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }

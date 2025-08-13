@@ -30,4 +30,4 @@ Give an <=80 word note about today's ${day} session. Be supportive, note trends,
   }
 }
 
-async function readJSON(req) { const chunks=[]; for await (const c of req) chunks.push(c); return JSON.parse(Buffer.concat(chunks).toString("utf8")||"{}"); }
+async function readJSON(req){ const a=[]; for await(const c of req) a.push(c); return JSON.parse(Buffer.concat(a).toString("utf8")||"{}"); }

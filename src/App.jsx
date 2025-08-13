@@ -1,17 +1,15 @@
-// SetForge — v5 (Auth + Multi-Splits + AI Importer + Coach + Failure-aware)
-// Phone-first PWA. Offline-first (localStorage) + Firebase Auth (email verify).
-// Images used: /images/bg-anime-login.png, /images/bg-anime-import.png, /images/coach-sticker.png
+// src/App.jsx
+// SetForge v5 — Offline-first PWA with AI helpers
+// - Firebase Auth (email/pass + verification)
+// - Multi-splits (create, edit, templates, reorder, safe IDs)
+// - Smart import (local parser + optional AI importer)
+// - Log view: add/remove exercises for today, skip per-exercise, bodyweight toggle,
+//   failure-aware suggestions (heavier increment when NOT at failure), tag modal
+// - AI exercise descriptions, automatic equip/category inference
+// - Dedicated Coach tab (hypertrophy-first + basic navigation help)
+// - Anime backgrounds on login + import, coach sticker decoration
 
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  LineChart,
-  Line,
-  ResponsiveContainer,
-  YAxis,
-  XAxis,
-  Tooltip,
-  CartesianGrid,
-} from "recharts";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   getAuth,
   onAuthStateChanged,
@@ -22,10 +20,20 @@ import {
 } from "firebase/auth";
 import { initFirebaseApp } from "./firebase";
 
-initFirebaseApp();
+// ---- small helpers
+const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+const cx = (...a) => a.filter(Boolean).join(" ");
 const auth = getAuth();
+initFirebaseApp();
 
 // ---------- Config ----------
+const EQUIP_OPTIONS = ["barbell", "dumbbell", "machine", "cable", "bodyweight", "smith", "unknown"];
+const CAT_OPTIONS = [
+  { id: "upper_comp", label: "Compound (Upper)" },
+  { id: "lower_comp", label: "Compound (Lower)" },
+  { id: "iso_small", label: "Isolation/Small" },
+];
+
 const PRESET_TAGS = [
   "tempo 3-1-1",
   "slow eccentric",
@@ -36,8 +44,7 @@ const PRESET_TAGS = [
   "narrow stance",
   "knees out",
   "brace hard",
-  "partial reps",
-  "rest-pause",
+  "ROM focus",
 ];
 
 const CONFIG = {
@@ -57,20 +64,9 @@ const CONFIG = {
   lowerMinKg: 2.5,
 };
 
-const DEFAULT_STATE = (units = CONFIG.unitsDefault) => ({
-  units,
-  activeSplitId: "",
-  splits: [],
-  sessions: [],
-});
-
-// ---------- Utils ----------
-const uid = () =>
-  Math.random().toString(36).slice(2) + Date.now().toString(36);
-const cx = (...a) => a.filter(Boolean).join(" ");
+// ---------- Storage ----------
 const lsKeyFor = (user) => `setforge_v5_${user?.uid || "guest"}`;
-const save = (user, data) =>
-  localStorage.setItem(lsKeyFor(user), JSON.stringify(data));
+const save = (user, data) => localStorage.setItem(lsKeyFor(user), JSON.stringify(data));
 const load = (user) => {
   try {
     const raw = localStorage.getItem(lsKeyFor(user));
@@ -80,71 +76,87 @@ const load = (user) => {
   }
 };
 
-// Guess equipment & category quickly (AI parser also tries to fill these)
+const DEFAULT_STATE = (units = CONFIG.unitsDefault) => ({
+  units,
+  activeSplitId: "",
+  splits: [], // [{id,name,days:[{id,name,exercises:[{id,name,sets,low,high,cat,equip}]}]}]
+  sessions: [], // [{id, splitId, dateISO, dayId, dayName, entries:[{exerciseId?, exercise, sets:[{w,r,failed,bw,tags[]}], units}], units}]
+});
+
+// ---------- Heuristics ----------
 function guessEquip(name) {
   const n = name.toLowerCase();
-  if (n.includes("smith")) return "smith_machine";
-  if (n.includes("barbell") || n.includes("bb")) return "barbell";
-  if (n.includes("dumbbell") || n.includes("db")) return "dumbbell";
-  if (n.includes("cable") || n.includes("rope") || n.includes("pulldown"))
-    return "cable";
-  if (
-    n.includes("dip") ||
-    n.includes("hanging") ||
-    n.includes("push-up") ||
-    n.includes("push up") ||
-    n.includes("neck") ||
-    n.includes("back extension") ||
-    n.includes("chin-up") ||
-    n.includes("pull-up")
-  )
-    return "bodyweight";
-  if (
-    n.includes("machine") ||
-    n.includes("pec deck") ||
-    n.includes("leg press") ||
-    n.includes("abduction") ||
-    n.includes("adduction") ||
-    n.includes("hamstring curl") ||
-    n.includes("leg extension") ||
-    n.includes("calf") ||
-    n.includes("hack squat")
-  )
-    return "machine";
-  return "machine";
+  if (n.includes("smith")) return "smith";
+  if (n.includes("barbell") || /\bbb\b/.test(n)) return "barbell";
+  if (n.includes("dumbbell") || /\bdb\b/.test(n)) return "dumbbell";
+  if (n.includes("cable") || n.includes("rope") || n.includes("pulldown")) return "cable";
+  if (/(dip|hanging|push[- ]?up|back extensions|pull[- ]?up)/.test(n)) return "bodyweight";
+  if (n.includes("machine") || n.includes("leg press") || n.includes("pec deck")) return "machine";
+  return "unknown";
 }
 function guessCat(name) {
   const n = name.toLowerCase();
-  if (/(squat|deadlift|romanian|hack|leg press|rdl|split squat)/.test(n))
-    return "lower_comp";
-  if (/(bench|press|row|pulldown|weighted dip|shoulder press|chin-up|pull-up)/.test(n))
-    return "upper_comp";
+  if (/(squat|deadlift|romanian|rdl|leg press|split squat|hack)/.test(n)) return "lower_comp";
+  if (/(bench|press|row|pulldown|pull[- ]?up|weighted dip|ohp|shoulder press)/.test(n)) return "upper_comp";
   return "iso_small";
 }
 
-// Parse plain text split (basic). We also support AI parsing via /api/parse-split
-function parseSplitText(raw) {
+// ---------- Math ----------
+function roundByEquip(weight, equip, units) {
+  if (units === "kg") {
+    const step = equip === "dumbbell" ? 1.25 : equip === "barbell" ? 2.5 : 1;
+    return Math.round(weight / step) * step;
+  }
+  const step =
+    equip === "dumbbell"
+      ? CONFIG.dumbbellStepLb
+      : equip === "barbell"
+      ? CONFIG.barbellStepLb
+      : equip === "bodyweight"
+      ? CONFIG.bodyweightStepLb
+      : CONFIG.machineStepLb;
+  return Math.round(weight / step) * step;
+}
+function incByCategory(cat, units, current) {
+  const pct = cat === "lower_comp" ? CONFIG.lowerPct : cat === "upper_comp" ? CONFIG.upperPct : CONFIG.isoPct;
+  const raw = (+current || 0) * pct;
+  const min =
+    units === "kg"
+      ? cat === "lower_comp"
+        ? CONFIG.lowerMinKg
+        : cat === "upper_comp"
+        ? CONFIG.upperMinKg
+        : CONFIG.isoMinKg
+      : cat === "lower_comp"
+      ? CONFIG.lowerMinLb
+      : cat === "upper_comp"
+      ? CONFIG.upperMinLb
+      : CONFIG.isoMinLb;
+  return Math.max(raw, min);
+}
+function bestSetByLoad(sets) {
+  if (!sets || !sets.length) return null;
+  return sets
+    .slice()
+    .sort((a, b) => (+b.w || 0) - (+a.w || 0) || (+b.r || 0) - (+a.r || 0))[0];
+}
+
+// ---------- Parsing ----------
+/** Local (fast) parser; supports "Name — 3 × 8–12" style. */
+function parseSplitTextLocal(raw) {
   const days = [];
-  const lines = String(raw).replace(/\r/g, "").split(/\n+/);
-  let cur = null;
-
+  const lines = String(raw || "").replace(/\r/g, "").split(/\n+/);
   const dayHeader =
-    /^(?:\p{Emoji_Presentation}|\p{Emoji}\ufe0f|[\u2600-\u27BF])?\s*([A-Z][A-Z \+\&/]{2,}|Pull\s*[AB]?|Push\s*[AB]?|Legs?\s*[AB]?|Upper|Lower|Rest|Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)/iu;
-  const exLine =
-    /^(.*?)\s*(?:[—\-–:])\s*(\d+)\s*[x×]\s*(\d+)(?:\s*[\-–to]\s*(\d+))?\s*$/i;
+    /^(?:\p{Emoji_Presentation}|\p{Emoji}\ufe0f|[\u2600-\u27BF])?\s*(?:DAY\s*\d+|[A-Z][A-Z ]{2,}|Pull\s*[AB]|Push\s*[AB]|Legs?\s*[AB]|Upper|Lower|Rest|Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)/iu;
 
+  const exLine = /^(.*?)\s*(?:[—\-–:])\s*(\d+)\s*[x×]\s*(\d+)(?:\s*[\-–to]\s*(\d+))?\s*$/i;
+
+  let cur = null;
   for (const rawLine of lines) {
-    // remove bullets (•, -, *) and keep content
-    const line = rawLine.trim().replace(/^[•\-\*\u2022]\s*/, "");
+    const line = rawLine.trim().replace(/^[•\u2022*\-]+\s*/, "");
     if (!line) continue;
-
-    const dh = line.match(dayHeader);
-    if (dh) {
-      cur = {
-        id: uid(),
-        name: line.replace(/^[\p{Emoji}\p{Emoji_Presentation}\ufe0f\s]+/u, ""),
-        exercises: [],
-      };
+    if (dayHeader.test(line)) {
+      cur = { id: uid(), name: line.replace(/^[\p{Emoji}\p{Emoji_Presentation}\ufe0f\s]+/u, ""), exercises: [] };
       days.push(cur);
       continue;
     }
@@ -155,6 +167,7 @@ function parseSplitText(raw) {
       const low = +m[3];
       const high = +(m[4] || m[3]);
       const item = {
+        id: uid(),
         name,
         sets,
         low,
@@ -172,133 +185,126 @@ function parseSplitText(raw) {
   return days;
 }
 
-// Rounding by equipment
-function roundByEquip(weight, equip, units) {
-  const step =
-    units === "kg"
-      ? equip === "machine"
-        ? 1
-        : equip === "dumbbell"
-        ? 1.25
-        : equip === "barbell" || equip === "smith_machine"
-        ? 2.5
-        : 2.5
-      : equip === "machine"
-      ? CONFIG.machineStepLb
-      : equip === "dumbbell"
-      ? CONFIG.dumbbellStepLb
-      : equip === "barbell" || equip === "smith_machine"
-      ? CONFIG.barbellStepLb
-      : CONFIG.bodyweightStepLb;
-  return Math.round(weight / step) * step;
+/** Optional AI parse for messy bullets/headers */
+async function parseSplitTextAI(raw) {
+  try {
+    const r = await fetch("/api/parse-split", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: String(raw || "") }),
+    });
+    const j = await r.json();
+    // Expect {days:[{name,exercises:[{name,sets,low,high}]}]}
+    const days = (j?.days || []).map((d) => ({
+      id: uid(),
+      name: d.name || "Day",
+      exercises: (d.exercises || []).map((e) => ({
+        id: uid(),
+        name: e.name,
+        sets: +e.sets || 3,
+        low: +e.low || 8,
+        high: +e.high || +e.low || 12,
+        cat: guessCat(e.name),
+        equip: guessEquip(e.name),
+      })),
+    }));
+    return days;
+  } catch {
+    return parseSplitTextLocal(raw);
+  }
 }
 
-// Failure-aware increase size by category
-function incByCategory(cat, units, current, failureBias = 0) {
-  // failureBias: -1 (failed), 0 (neutral), +1 (no fail, crushed the set)
-  const basePct =
-    cat === "lower_comp"
-      ? CONFIG.lowerPct
-      : cat === "upper_comp"
-      ? CONFIG.upperPct
-      : CONFIG.isoPct;
+// ---------- Suggestion via AI (server) fallback to local rule
+async function getAISuggestion({ history, meta, units }) {
+  try {
+    const r = await fetch("/api/suggest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ history, meta, units }),
+    });
+    const j = await r.json();
+    if (j?.next != null) return j;
+  } catch {}
+  // local fallback (failure-aware)
+  const last = history?.[0];
+  if (!last) return null;
+  const top = bestSetByLoad(last.sets);
+  if (!top || meta.equip === "bodyweight") return null;
+  const weight = +top.w || 0;
+  const reps = +top.r || 0;
+  const failedAny = (last.sets || []).some((s) => !!s.failed);
+  const delta = incByCategory(meta.cat, units, weight);
 
-  // bias the pct: reduce when failed, increase when not failing
-  const biasPct = basePct * (failureBias > 0 ? 1.35 : failureBias < 0 ? 0.6 : 1.0);
+  let next = weight;
+  if (reps >= meta.high && !failedAny) next = weight + 1.5 * delta;
+  else if (reps >= meta.high && failedAny) next = weight + 1.0 * delta;
+  else if (reps >= meta.low && !failedAny) next = weight + 0.75 * delta;
+  else if (reps < meta.low && failedAny) next = Math.max(0, weight - 0.5 * delta);
+  else next = Math.max(0, weight - 0.25 * delta);
 
-  const raw = (+current || 0) * biasPct;
-  const min =
-    units === "kg"
-      ? cat === "lower_comp"
-        ? CONFIG.lowerMinKg
-        : cat === "upper_comp"
-        ? CONFIG.upperMinKg
-        : CONFIG.isoMinKg
-      : cat === "lower_comp"
-      ? CONFIG.lowerMinLb
-      : cat === "upper_comp"
-      ? CONFIG.upperMinLb
-      : CONFIG.isoMinLb;
-  return Math.max(raw, min);
-}
-
-function bestSetByLoad(sets) {
-  if (!sets || !sets.length) return null;
-  return sets
-    .slice()
-    .sort((a, b) => (+b.w || 0) - (+a.w || 0) || (+b.r || 0) - (+a.r || 0))[0];
+  return {
+    next: roundByEquip(next, meta.equip, units),
+    basis: { weight, reps, low: meta.low, high: meta.high, failedAny },
+  };
 }
 
 // ---------- App ----------
 export default function App() {
   const [user, setUser] = useState(null);
   const [data, setData] = useState(DEFAULT_STATE());
-  const [tab, setTab] = useState("log"); // log | split | history | coach
+  const [tab, setTab] = useState("log"); // log | split | history | chat
   const [units, setUnits] = useState(CONFIG.unitsDefault);
-  const [today, setToday] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  );
-  const [showSticker, setShowSticker] = useState(false);
-
-  const currentSplit = useMemo(
-    () => data.splits.find((s) => s.id === data.activeSplitId),
-    [data]
-  );
+  const [today, setToday] = useState(() => new Date().toISOString().slice(0, 10));
   const [selectedDayId, setSelectedDayId] = useState("");
+  const [showTagModal, setShowTagModal] = useState(null); // {exId, setIndex}
+  const [tagDraft, setTagDraft] = useState("");
 
-  // auth state
+  // auth
   useEffect(
     () =>
       onAuthStateChanged(auth, (u) => {
-        setUser(u);
+        setUser(u || null);
         const loaded = load(u);
         setUnits(loaded.units || CONFIG.unitsDefault);
         setData(loaded);
       }),
     []
   );
-  useEffect(() => {
-    const next = { ...data, units };
-    save(user, next);
-  }, [data, units, user]);
+  useEffect(() => save(user, { ...data, units }), [data, units, user]);
 
-  // Default day when active split changes
+  const currentSplit = useMemo(() => data.splits.find((s) => s.id === data.activeSplitId), [data]);
   useEffect(() => {
-    if (currentSplit) {
-      setSelectedDayId(currentSplit.days?.[0]?.id || "");
-    }
-  }, [data.activeSplitId]); // eslint-disable-line
+    if (currentSplit) setSelectedDayId(currentSplit.days?.[0]?.id || "");
+  }, [data.activeSplitId]);
 
-  // Show onboarding if no splits at all
   const needsOnboarding = (data.splits?.length || 0) === 0;
 
-  // ---- Logging state ----
-  function getMeta(item) {
+  // ---- Derived: current day & initial draft for logging
+  function getMeta(ex) {
     return {
-      name: item.name,
-      sets: item.sets || 1,
-      low: item.low || 8,
-      high: item.high || 12,
-      cat: item.cat || "iso_small",
-      equip: item.equip || "machine",
+      id: ex.id,
+      name: ex.name,
+      sets: ex.sets || 1,
+      low: ex.low || 8,
+      high: ex.high || 12,
+      cat: ex.cat || "iso_small",
+      equip: ex.equip || "unknown",
     };
   }
   const currentDay = useMemo(
-    () =>
-      currentSplit?.days?.find((d) => d.id === selectedDayId) ||
-      currentSplit?.days?.[0],
+    () => currentSplit?.days?.find((d) => d.id === selectedDayId) || currentSplit?.days?.[0],
     [currentSplit, selectedDayId]
   );
 
-  // Build the initial draft (includes split exercises)
-  const baseDraft = useMemo(() => {
+  const initialDraft = useMemo(() => {
     const map = {};
     if (!currentDay) return map;
     (currentDay.exercises || []).forEach((ex) => {
       const m = getMeta(ex);
-      map[m.name] = Array.from({ length: m.sets }).map(() => ({
+      map[m.id] = Array.from({ length: m.sets }).map(() => ({
         failed: false,
-        w: "",
+        bw: m.equip === "bodyweight",
+        w: m.equip === "bodyweight" ? 0 : "",
         r: "",
         tags: [],
       }));
@@ -306,124 +312,80 @@ export default function App() {
     return map;
   }, [currentDay]);
 
-  // Allow temporary exercises only for today's session (doesn't modify split)
-  const [extraExercises, setExtraExercises] = useState([]); // [{name, cat, equip, sets, low, high}]
-  const [draft, setDraft] = useState(baseDraft);
+  const [draft, setDraft] = useState(initialDraft);
+  const [skipToday, setSkipToday] = useState({}); // per exerciseId
+  const [adhocToday, setAdhocToday] = useState([]); // [{id,name,sets,low,high,cat,equip}]
 
   useEffect(() => {
-    setExtraExercises([]);
-    setDraft(baseDraft);
-  }, [baseDraft]);
+    setDraft(initialDraft);
+    setSkipToday({});
+    setAdhocToday([]);
+  }, [initialDraft]);
 
-  // Merge extras into draft view (only if they aren’t present)
-  useEffect(() => {
-    if (extraExercises.length === 0) return;
-    setDraft((prev) => {
-      const next = { ...prev };
-      for (const ex of extraExercises) {
-        if (!next[ex.name]) {
-          next[ex.name] = Array.from({ length: ex.sets || 1 }).map(() => ({
-            failed: false,
-            w: "",
-            r: "",
-            tags: [],
-          }));
-        }
-      }
-      return next;
-    });
-  }, [extraExercises]);
-
-  // Suggestions (history scoped to active split)
-  function getHistoryFor(exName) {
+  // ---- History helpers
+  function historyFor(exId, exName) {
     return data.sessions
       .filter((s) => s.splitId === data.activeSplitId)
-      .map((s) => s.entries.find((e) => e.exercise === exName))
+      .map((s) =>
+        s.entries.find((e) => (exId ? e.exerciseId === exId : e.exercise === exName || e.exerciseId == null))
+      )
       .filter(Boolean);
   }
 
-  // Reservation: if equip is bodyweight, suggestions focus on reps; we still allow added load if user enters it.
-  function suggestNext(meta) {
-    const histEntries = getHistoryFor(meta.name);
-    if (histEntries.length === 0) return null;
-    const last = histEntries[0];
-    const top = bestSetByLoad(last.sets);
-    if (!top) return null;
-
-    const weight = +top.w || 0;
-    const reps = +top.r || 0;
-    // derive bias from failure flag on best set (if any)
-    const bestFailed = !!top.failed;
-    const failureBias = bestFailed ? -1 : 1;
-
-    // If user hit the top of range and didn't fail => encourage bump
-    // If user failed and didn't reach low range => conservative or down
-    let delta = incByCategory(meta.cat, units, weight || (meta.equip === "bodyweight" ? 100 : 0), failureBias);
-    let next = weight;
-
-    if (meta.equip === "bodyweight") {
-      // For bodyweight, keep weight as-is (0) and cue reps progression implicitly
-      return { next: 0, basis: { weight, reps, low: meta.low, high: meta.high }, bw: true };
-    }
-
-    if (!bestFailed && reps >= meta.high) {
-      next = roundByEquip((weight || 0) + delta, meta.equip, units);
-    } else if (bestFailed && reps <= meta.low) {
-      // failed early -> hold or even reduce slightly
-      next = roundByEquip(Math.max(0, (weight || 0) - delta), meta.equip, units);
-    } else {
-      next = roundByEquip(weight || 0, meta.equip, units);
-    }
-
-    return { next, basis: { weight, reps, low: meta.low, high: meta.high } };
+  async function suggestNext(meta) {
+    const hist = historyFor(meta.id, meta.name);
+    if (!hist?.length) return null;
+    const ans = await getAISuggestion({ history: hist, meta, units });
+    return ans;
   }
 
-  // Live suggest per set using the entered values (and failure box)
   function liveSuggest(meta, idx) {
-    const s = (draft[meta.name] || [])[idx];
-    if (!s) return null;
-    const w = +s.w || 0;
-    const r = +s.r || 0;
-    if (meta.equip === "bodyweight") return null;
+    const row = (draft[meta.id] || [])[idx];
+    if (!row) return null;
+    if (row.bw || meta.equip === "bodyweight") return null;
+    const w = +row.w || 0;
+    const r = +row.r || 0;
     if (!w || !r) return null;
-
-    const failureBias = s.failed ? -1 : 1;
-    const d = incByCategory(meta.cat, units, w, failureBias);
-    if (!s.failed && r >= meta.high) return roundByEquip(w + d, meta.equip, units);
-    if (s.failed && r <= meta.low) return roundByEquip(Math.max(0, w - d), meta.equip, units);
-    return roundByEquip(w, meta.equip, units);
+    const d = incByCategory(meta.cat, units, w);
+    const next =
+      r >= meta.high ? w + d * 1.25 : r < meta.low ? Math.max(0, w - d * 0.25) : w + d * 0.75;
+    return roundByEquip(next, meta.equip, units);
   }
 
-  function saveSession() {
-    if (!currentSplit || !currentDay) {
-      alert("Pick a split/day first");
-      return;
-    }
+  // ----- Save session
+  async function saveSession() {
+    if (!currentSplit || !currentDay) return alert("Pick a split/day first");
 
-    // Gather all exercises visible today (split + extras) from the current draft
-    const allExerciseNames = Object.keys(draft);
-
-    const entries = allExerciseNames
-      .map((exName) => {
-        const setsArr = (draft[exName] || []).filter((s) => +s.r > 0 || (s.w === "0" || s.w === 0));
-        if (!setsArr.length) return null;
-        const sets = setsArr.map((s) => ({
-          failed: !!s.failed,
-          w: +s.w || 0, // 0 = BW allowed
-          r: +s.r || 0,
-          tags: s.tags || [],
-        }));
+    const fromPlan = (currentDay.exercises || [])
+      .filter((ex) => !skipToday[ex.id])
+      .map(getMeta)
+      .map((m) => {
+        const arr = (draft[m.id] || []).filter((s) => +s.r > 0 && (s.bw || s.w === "0" || +s.w >= 0));
+        if (!arr.length) return null;
         return {
-          exercise: exName,
-          sets,
+          exerciseId: m.id,
+          exercise: m.name,
+          sets: arr.map((s) => ({ failed: !!s.failed, bw: !!s.bw, w: +s.w || 0, r: +s.r, tags: s.tags || [] })),
         };
       })
       .filter(Boolean);
 
-    if (!entries.length) {
-      alert("No sets to save yet");
-      return;
-    }
+    const fromAdhoc = adhocToday
+      .map(getMeta)
+      .map((m) => {
+        const arr = (draft[m.id] || []).filter((s) => +s.r > 0 && (s.bw || s.w === "0" || +s.w >= 0));
+        if (!arr.length) return null;
+        return {
+          exerciseId: m.id,
+          exercise: m.name,
+          sets: arr.map((s) => ({ failed: !!s.failed, bw: !!s.bw, w: +s.w || 0, r: +s.r, tags: s.tags || [] })),
+          adhoc: true,
+        };
+      })
+      .filter(Boolean);
+
+    const entries = [...fromPlan, ...fromAdhoc];
+    if (!entries.length) return alert("No sets to save yet");
 
     const session = {
       id: uid(),
@@ -434,11 +396,10 @@ export default function App() {
       entries,
       units,
     };
-
     setData((prev) => ({ ...prev, sessions: [session, ...prev.sessions] }));
 
-    // Async coach ping (advice-only). If offline/no key it's fine.
     try {
+      // fire-and-forget: let the AI coach learn / prep recommendations
       fetch("/api/coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -446,205 +407,320 @@ export default function App() {
           day: currentDay.name,
           units,
           session,
-          recent: data.sessions
-            .filter((s) => s.splitId === data.activeSplitId)
-            .slice(0, 6),
+          recent: data.sessions.filter((s) => s.splitId === data.activeSplitId).slice(0, 6),
         }),
       });
     } catch {}
-
     alert("Session saved");
   }
 
+  // ---- Split management
   function setActiveSplit(id) {
     setData((prev) => ({ ...prev, activeSplitId: id }));
   }
   function createSplit(name, days) {
     const id = uid();
-    const split = {
-      id,
-      name: name || `Split ${(data.splits?.length || 0) + 1}`,
-      days: days || [],
-    };
-    setData((prev) => ({
-      ...prev,
-      splits: [...prev.splits, split],
-      activeSplitId: id,
-    }));
+    const split = { id, name: name || `Split ${(data.splits?.length || 0) + 1}`, days: days || [] };
+    setData((prev) => ({ ...prev, splits: [...prev.splits, split], activeSplitId: id }));
+  }
+  function renameSplit(id) {
+    const name = prompt("Split name", data.splits.find((s) => s.id === id)?.name || "");
+    if (!name) return;
+    setData((prev) => ({ ...prev, splits: prev.splits.map((s) => (s.id === id ? { ...s, name } : s)) }));
   }
   function removeSplit(id) {
-    if (!confirm("Delete this split? (sessions stay stored)")) return;
+    if (!confirm("Delete this split? (sessions stay stored; history filter changes)")) return;
     setData((prev) => ({
       ...prev,
       splits: prev.splits.filter((s) => s.id !== id),
       activeSplitId: prev.activeSplitId === id ? "" : prev.activeSplitId,
     }));
   }
-  function applyParsedToNewSplit(splitName, days) {
-    // days: [{id?, name, exercises:[{name, sets, low, high, equip?, cat?}]}]
-    const normalized = (days || []).map((d) => ({
-      id: d.id || uid(),
-      name: d.name || "Day",
-      exercises: (d.exercises || []).map((e) => ({
-        name: e.name,
-        sets: e.sets || 3,
-        low: e.low || 8,
-        high: e.high || 12,
-        equip: e.equip || guessEquip(e.name),
-        cat: e.cat || guessCat(e.name),
-      })),
+  function addDay(splitId) {
+    const name = prompt("Day name", "DAY");
+    if (!name) return;
+    setData((prev) => ({
+      ...prev,
+      splits: prev.splits.map((s) =>
+        s.id === splitId ? { ...s, days: [...(s.days || []), { id: uid(), name, exercises: [] }] } : s
+      ),
     }));
-    if (!normalized.length) {
-      alert("Couldn’t parse any days. Try the AI Smart Parse or format like 'Name — 3 × 8–12'.");
+  }
+  function addExercise(splitId, dayId) {
+    const name = prompt("Exercise name");
+    if (!name) return;
+    const sets = Number(prompt("Sets", "3") || 3);
+    const low = Number(prompt("Low reps", "8") || 8);
+    const high = Number(prompt("High reps", "12") || 12);
+    const equip = selectOption("Equipment", EQUIP_OPTIONS, guessEquip(name));
+    const cat = selectOption(
+      "Category",
+      CAT_OPTIONS.map((c) => c.id),
+      guessCat(name)
+    );
+
+    const ex = { id: uid(), name, sets, low, high, equip, cat };
+    setData((prev) => ({
+      ...prev,
+      splits: prev.splits.map((s) =>
+        s.id !== splitId
+          ? s
+          : {
+              ...s,
+              days: s.days.map((d) => (d.id !== dayId ? d : { ...d, exercises: [...d.exercises, ex] })),
+            }
+      ),
+    }));
+  }
+  function editExercise(splitId, dayId, exIndex) {
+    setData((prev) => {
+      const s = prev.splits.find((x) => x.id === splitId);
+      const d = s.days.find((x) => x.id === dayId);
+      const e = { ...d.exercises[exIndex] };
+
+      const name = prompt("Exercise name", e.name) || e.name;
+      const sets = Number(prompt("Sets", String(e.sets)) || e.sets);
+      const low = Number(prompt("Low reps", String(e.low)) || e.low);
+      const high = Number(prompt("High reps", String(e.high)) || e.high);
+      const equip = selectOption("Equipment", EQUIP_OPTIONS, e.equip || guessEquip(name));
+      const cat = selectOption(
+        "Category",
+        CAT_OPTIONS.map((c) => c.id),
+        e.cat || guessCat(name)
+      );
+
+      const newSplits = prev.splits.map((sp) =>
+        sp.id !== splitId
+          ? sp
+          : {
+              ...sp,
+              days: sp.days.map((dd) =>
+                dd.id !== dayId
+                  ? dd
+                  : {
+                      ...dd,
+                      exercises: dd.exercises.map((x, i) =>
+                        i !== exIndex ? x : { ...e, name, sets, low, high, equip, cat }
+                      ),
+                    }
+              ),
+            }
+      );
+      return { ...prev, splits: newSplits };
+    });
+  }
+  function removeExercise(splitId, dayId, exIndex) {
+    setData((prev) => ({
+      ...prev,
+      splits: prev.splits.map((sp) =>
+        sp.id !== splitId
+          ? sp
+          : {
+              ...sp,
+              days: sp.days.map((dd) =>
+                dd.id !== dayId ? dd : { ...dd, exercises: dd.exercises.filter((_, i) => i !== exIndex) }
+              ),
+            }
+      ),
+    }));
+  }
+  function moveExercise(splitId, dayId, exIndex, dir) {
+    setData((prev) => ({
+      ...prev,
+      splits: prev.splits.map((sp) =>
+        sp.id !== splitId
+          ? sp
+          : {
+              ...sp,
+              days: sp.days.map((dd) => {
+                if (dd.id !== dayId) return dd;
+                const arr = [...dd.exercises];
+                const to = exIndex + (dir === "up" ? -1 : 1);
+                if (to < 0 || to >= arr.length) return dd;
+                const [item] = arr.splice(exIndex, 1);
+                arr.splice(to, 0, item);
+                return { ...dd, exercises: arr };
+              }),
+            }
+      ),
+    }));
+  }
+
+  // ---- Import helpers
+  async function applyParsedToNewSplit(splitName, raw, useAI) {
+    const days = useAI ? await parseSplitTextAI(raw) : parseSplitTextLocal(raw);
+    if (!days.length) {
+      alert("Couldn’t parse. Try the AI importer or use lines like 'Name — 3 × 8–12'.");
       return;
     }
     const id = uid();
-    const split = {
-      id,
-      name: splitName || `Imported ${new Date().toISOString().slice(0, 10)}`,
-      days: normalized,
-    };
-    setData((prev) => ({
-      ...prev,
-      splits: [...prev.splits, split],
-      activeSplitId: id,
-    }));
+    const split = { id, name: splitName || `Imported ${new Date().toISOString().slice(0, 10)}`, days };
+    setData((prev) => ({ ...prev, splits: [...prev.splits, split], activeSplitId: id }));
     setTab("log");
   }
 
-  // Show coach sticker only on login/import/coach screens (aesthetic)
-  useEffect(() => {
-    setShowSticker(tab === "coach" || needsOnboarding);
-  }, [tab, needsOnboarding]);
-
+  // ---- UI render
   return (
-    <div className="min-h-screen bg-neutral-900">
-      {/* Coach sticker (optional) */}
-      {showSticker && (
-        <img
-          src="/images/coach-sticker.png"
-          alt=""
-          className="coach-sticker hidden sm:block"
-        />
-      )}
-
+    <div className="min-h-screen text-neutral-100">
+      {/* Header */}
       <div className="mx-auto w-full max-w-screen-sm px-3 py-4">
         <Header units={units} setUnits={setUnits} user={user} setTab={setTab} />
+      </div>
 
-        {!user ? (
-          <AuthScreen />
-        ) : user && !user.emailVerified ? (
+      {/* Auth / Verify */}
+      {!user ? (
+        <div className="fullscreen bg-login anime-overlay">
+          <div className="safe-px safe-pt mx-auto w-full max-w-screen-sm">
+            <AuthScreen />
+            <div className="coach-sticker" />
+          </div>
+        </div>
+      ) : user && !user.emailVerified ? (
+        <div className="safe-px safe-pt mx-auto w-full max-w-screen-sm">
           <VerifyScreen user={user} />
-        ) : (
-          <>
-            {/* Tabs: Import only during onboarding; later lives in Split */}
-            <nav className="mt-3 flex gap-2">
+        </div>
+      ) : (
+        <div className="safe-px mx-auto w-full max-w-screen-sm pb-8">
+          {/* Tabs */}
+          <nav className="mt-2 flex gap-2">
+            {["log", "split", "history", "chat"].map((t) => (
               <button
-                onClick={() => setTab("log")}
-                disabled={!data.activeSplitId}
+                key={t}
+                onClick={() => setTab(t)}
                 className={cx(
-                  "sf-btn",
-                  tab === "log" ? "sf-btn-primary" : "sf-btn-ghost",
-                  !data.activeSplitId && "opacity-50"
+                  "px-3 py-2 rounded-xl text-sm",
+                  tab === t ? "bg-white text-neutral-900" : "bg-neutral-800 border border-neutral-700",
+                  t === "log" && !data.activeSplitId && "opacity-50"
                 )}
+                disabled={t === "log" && !data.activeSplitId}
               >
-                Log
+                {t === "log" ? "Log" : t === "split" ? "Split" : t === "history" ? "Past Sessions" : "Coach"}
               </button>
+            ))}
+            {needsOnboarding && (
               <button
                 onClick={() => setTab("split")}
-                className={cx("sf-btn", tab === "split" ? "sf-btn-primary" : "sf-btn-ghost")}
+                className="px-3 py-2 rounded-xl bg-neutral-800 border border-neutral-700 text-sm"
               >
-                Split
+                Import
               </button>
-              <button
-                onClick={() => setTab("history")}
-                className={cx("sf-btn", tab === "history" ? "sf-btn-primary" : "sf-btn-ghost")}
-              >
-                Past Sessions
-              </button>
-              <button
-                onClick={() => setTab("coach")}
-                className={cx("sf-btn", tab === "coach" ? "sf-btn-primary" : "sf-btn-ghost")}
-              >
-                Coach
-              </button>
-              {needsOnboarding && (
-                <button
-                  onClick={() => setTab("import")}
-                  className={cx("sf-btn", tab === "import" ? "sf-btn-primary" : "sf-btn-ghost")}
-                >
-                  Import
+            )}
+          </nav>
+
+          {/* Onboarding card */}
+          {needsOnboarding && tab !== "split" && (
+            <div className="mt-4 rounded-2xl border border-neutral-800 p-4">
+              <h2 className="font-semibold mb-1">Welcome to SetForge</h2>
+              <p className="text-sm text-neutral-400">
+                Offline lift tracker — your data stays on device. Start by importing or building a split.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => setTab("split")} className="px-3 py-2 rounded-xl bg-white text-neutral-900 text-sm">
+                  Paste / Import
                 </button>
-              )}
-            </nav>
-
-            {/* Onboarding callout */}
-            {needsOnboarding && tab !== "import" && (
-              <div className="mt-4 sf-card p-4">
-                <h2 className="font-semibold mb-1">Welcome to SetForge</h2>
-                <p className="text-sm text-neutral-400">
-                  Offline lift tracker — your data stays on device. Start by
-                  importing or building a split.
-                </p>
-                <div className="mt-2 flex gap-2">
-                  <button onClick={() => setTab("import")} className="sf-btn sf-btn-primary">
-                    Paste / Import
-                  </button>
-                  <button onClick={() => setTab("split")} className="sf-btn sf-btn-ghost">
-                    Build Manually
-                  </button>
-                  <button onClick={() => setTab("split")} className="sf-btn sf-btn-ghost">
-                    Templates
-                  </button>
-                </div>
+                <button
+                  onClick={() => {
+                    const id = uid();
+                    createSplit(`Split ${(data.splits?.length || 0) + 1}`);
+                    setData((prev) => ({ ...prev, activeSplitId: id }));
+                  }}
+                  className="px-3 py-2 rounded-xl bg-neutral-800 border border-neutral-700 text-sm"
+                >
+                  Build Manually
+                </button>
               </div>
-            )}
+            </div>
+          )}
 
-            {tab === "log" && (
-              <LogView
-                data={data}
-                setData={setData}
-                currentSplit={currentSplit}
-                selectedDayId={selectedDayId}
-                setSelectedDayId={setSelectedDayId}
-                draft={draft}
-                setDraft={setDraft}
-                units={units}
-                today={today}
-                setToday={setToday}
-                suggestNext={suggestNext}
-                liveSuggest={liveSuggest}
-                saveSession={saveSession}
-                extraExercises={extraExercises}
-                setExtraExercises={setExtraExercises}
-              />
-            )}
+          {/* Main panels */}
+          {tab === "log" && (
+            <LogView
+              data={data}
+              setData={setData}
+              currentSplit={currentSplit}
+              selectedDayId={selectedDayId}
+              setSelectedDayId={setSelectedDayId}
+              draft={draft}
+              setDraft={setDraft}
+              units={units}
+              today={today}
+              setToday={setToday}
+              suggestNext={suggestNext}
+              liveSuggest={liveSuggest}
+              saveSession={saveSession}
+              skipToday={skipToday}
+              setSkipToday={setSkipToday}
+              adhocToday={adhocToday}
+              setAdhocToday={setAdhocToday}
+              setShowTagModal={setShowTagModal}
+            />
+          )}
 
-            {tab === "split" && (
-              <SplitView
-                data={data}
-                setData={setData}
-                setActiveSplit={setActiveSplit}
-                createSplit={createSplit}
-                removeSplit={removeSplit}
-                applyParsedToNewSplit={applyParsedToNewSplit}
-              />
-            )}
+          {tab === "split" && (
+            <SplitView
+              data={data}
+              setData={setData}
+              setActiveSplit={setActiveSplit}
+              createSplit={createSplit}
+              renameSplit={renameSplit}
+              removeSplit={removeSplit}
+              addDay={addDay}
+              addExercise={addExercise}
+              editExercise={editExercise}
+              removeExercise={removeExercise}
+              moveExercise={moveExercise}
+              applyParsedToNewSplit={applyParsedToNewSplit}
+            />
+          )}
 
-            {tab === "history" && <HistoryView data={data} />}
+          {tab === "history" && <HistoryView data={data} />}
 
-            {tab === "coach" && <CoachView />}
+          {tab === "chat" && <CoachChat data={data} />}
 
-            {tab === "import" && needsOnboarding && (
-              <ImportFirstRun onUse={(name, days) => applyParsedToNewSplit(name, days)} />
-            )}
+          <footer className="text-center text-[10px] text-neutral-500 mt-6">
+            Built for you. Works offline. Advice-only AI coach when online.
+          </footer>
+        </div>
+      )}
 
-            <footer className="text-center text-[10px] text-neutral-500 mt-6">
-              Built for you. Works offline. AI importer & advice-only coach when online.
-            </footer>
-          </>
-        )}
-      </div>
+      {/* Tag modal */}
+      {showTagModal && (
+        <TagModal
+          isOpen
+          preset={PRESET_TAGS}
+          selected={(draft[showTagModal.exId]?.[showTagModal.idx]?.tags) || []}
+          onClose={() => {
+            setTagDraft("");
+            setShowTagModal(null);
+          }}
+          onToggle={(tag) => {
+            const { exId, idx } = showTagModal;
+            setDraft((prev) => {
+              const arr = [...(prev[exId] || [])];
+              const row = { ...(arr[idx] || { failed: false, bw: false, w: "", r: "", tags: [] }) };
+              const has = (row.tags || []).includes(tag);
+              row.tags = has ? row.tags.filter((x) => x !== tag) : [...(row.tags || []), tag];
+              arr[idx] = row;
+              return { ...prev, [exId]: arr };
+            });
+          }}
+          tagDraft={tagDraft}
+          setTagDraft={setTagDraft}
+          onAddCustom={() => {
+            const t = tagDraft.trim();
+            if (!t) return;
+            const { exId, idx } = showTagModal;
+            setDraft((prev) => {
+              const arr = [...(prev[exId] || [])];
+              const row = { ...(arr[idx] || { failed: false, bw: false, w: "", r: "", tags: [] }) };
+              row.tags = [...new Set([...(row.tags || []), t])];
+              arr[idx] = row;
+              return { ...prev, [exId]: arr };
+            });
+            setTagDraft("");
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -655,49 +731,40 @@ function Header({ units, setUnits, user, setTab }) {
     <header className="flex items-center justify-between">
       <div>
         <h1 className="text-xl font-bold">SetForge</h1>
-        <p className="text-xs text-neutral-400">
-          Offline lift tracker · your data stays on device
-        </p>
+        <p className="text-xs text-neutral-400">Offline lift tracker · your data stays on device</p>
       </div>
       <div className="flex items-center gap-2">
         <select
           value={units}
           onChange={(e) => setUnits(e.target.value)}
-          className="sf-input"
+          className="px-2 py-1 rounded-lg bg-neutral-800 border border-neutral-700 text-sm"
         >
           <option value="lb">lb</option>
           <option value="kg">kg</option>
         </select>
-        <button
-          className="sf-btn sf-btn-ghost"
-          onClick={() => setTab("import")}
-          title="Quick import"
-        >
-          Import
-        </button>
-        {user && <SignOutBtn />}
+        {user && (
+          <>
+            <button className="px-2 py-1 rounded-lg bg-neutral-800 border border-neutral-700 text-sm" onClick={() => setTab("chat")}>
+              Coach
+            </button>
+            <button onClick={() => signOut(getAuth())} className="px-2 py-1 rounded-lg bg-neutral-800 border border-neutral-700 text-sm">
+              Sign out
+            </button>
+          </>
+        )}
       </div>
     </header>
   );
 }
-function SignOutBtn() {
-  return (
-    <button
-      onClick={() => signOut(getAuth())}
-      className="sf-btn sf-btn-ghost"
-    >
-      Sign out
-    </button>
-  );
-}
 
-// ---------- Auth Screens ----------
+// ---------- Auth ----------
 function AuthScreen() {
   const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+
   async function go() {
     setBusy(true);
     setMsg("");
@@ -715,48 +782,25 @@ function AuthScreen() {
       setBusy(false);
     }
   }
+
   return (
-    <section className="mt-6 rounded-2xl overflow-hidden">
-      <div className="bg-login relative">
-        <div className="bg-overlay">
-          <div className="max-w-screen-sm mx-auto px-3 py-8">
-            <div className="text-center mb-4">
-              <div className="text-3xl font-extrabold tracking-tight">SetForge</div>
-              <div className="text-sm text-neutral-300">Train hard. Track smarter.</div>
-            </div>
-            <div className="sf-card p-4">
-              <div className="grid gap-2">
-                <input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email"
-                  className="sf-input"
-                />
-                <input
-                  type="password"
-                  value={pw}
-                  onChange={(e) => setPw(e.target.value)}
-                  placeholder="Password (8+ chars)"
-                  className="sf-input"
-                />
-                <button onClick={go} disabled={busy} className="sf-btn sf-btn-primary">
-                  {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
-                </button>
-                {msg && <div className="text-xs text-neutral-200">{msg}</div>}
-                <button
-                  onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-                  className="text-xs text-neutral-300 mt-1"
-                >
-                  {mode === "signin" ? "No account? Sign up" : "Have an account? Sign in"}
-                </button>
-              </div>
-              <p className="caption mt-3">
-                Email verification required. Firebase Auth (free tier).
-              </p>
-            </div>
-          </div>
-        </div>
+    <section className="glass-strong rounded-2xl border border-neutral-800 p-4 mx-auto max-w-md">
+      <div className="text-center mb-3">
+        <div className="text-2xl font-bold">SetForge</div>
+        <div className="text-sm text-neutral-300">Sign {mode === "signin" ? "in" : "up"} to get started</div>
       </div>
+      <div className="grid gap-2">
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="input" />
+        <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Password (8+ chars)" className="input" />
+        <button onClick={go} disabled={busy} className="btn btn-primary">
+          {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
+        </button>
+        {msg && <div className="text-xs text-neutral-200">{msg}</div>}
+        <button onClick={() => setMode(mode === "signin" ? "signup" : "signin")} className="text-xs text-neutral-400 mt-1">
+          {mode === "signin" ? "No account? Sign up" : "Have an account? Sign in"}
+        </button>
+      </div>
+      <p className="text-[10px] text-neutral-500 mt-3">Email verification required. We use Firebase Auth free tier.</p>
     </section>
   );
 }
@@ -769,19 +813,16 @@ function VerifyScreen({ user }) {
     } catch {}
   }
   return (
-    <section className="mt-8 sf-card p-4 text-center">
+    <section className="mt-8 rounded-2xl border border-neutral-800 p-4 text-center">
       <div className="text-lg font-semibold">Verify your email</div>
       <div className="text-sm text-neutral-400">
         We sent a link to <b>{user.email}</b>. Click it, then refresh this screen.
       </div>
       <div className="mt-3 flex justify-center gap-2">
-        <button
-          onClick={() => window.location.reload()}
-          className="sf-btn sf-btn-primary"
-        >
+        <button onClick={() => window.location.reload()} className="px-3 py-2 rounded-xl bg-white text-neutral-900 text-sm">
           I verified
         </button>
-        <button onClick={resend} className="sf-btn sf-btn-ghost">
+        <button onClick={resend} className="px-3 py-2 rounded-xl bg-neutral-800 border border-neutral-700 text-sm">
           Resend
         </button>
       </div>
@@ -805,73 +846,70 @@ function LogView({
   suggestNext,
   liveSuggest,
   saveSession,
-  extraExercises,
-  setExtraExercises,
+  skipToday,
+  setSkipToday,
+  adhocToday,
+  setAdhocToday,
+  setShowTagModal,
 }) {
-  const [tagModalFor, setTagModalFor] = useState(null); // {ex, idx}
+  if (!currentSplit) return <div className="mt-6 text-sm text-neutral-400">Pick a split first in the Split tab.</div>;
+  const day = currentSplit.days?.find((d) => d.id === selectedDayId) || currentSplit.days?.[0];
+  const getMeta = (i) => ({ id: i.id, name: i.name, sets: i.sets, low: i.low, high: i.high, cat: i.cat, equip: i.equip });
 
-  if (!currentSplit)
-    return (
-      <div className="mt-6 text-sm text-neutral-400">
-        Pick a split first in the Split tab.
-      </div>
-    );
-
-  const day =
-    currentSplit.days?.find((d) => d.id === selectedDayId) ||
-    currentSplit.days?.[0];
-
-  const getMeta = (i) => ({
-    name: i.name,
-    sets: i.sets,
-    low: i.low,
-    high: i.high,
-    cat: i.cat,
-    equip: i.equip,
-  });
-
-  function addSet(ex) {
+  function addSet(exId, equip) {
     setDraft((prev) => ({
       ...prev,
-      [ex]: [...(prev[ex] || []), { failed: false, w: "", r: "", tags: [] }],
+      [exId]: [
+        ...(prev[exId] || []),
+        { failed: false, bw: equip === "bodyweight", w: equip === "bodyweight" ? 0 : "", r: "", tags: [] },
+      ],
     }));
   }
-  function removeSetHere(ex, idx) {
+  function removeSetHere(exId, idx) {
     setDraft((prev) => {
-      const arr = [...(prev[ex] || [])];
+      const arr = [...(prev[exId] || [])];
       arr.splice(idx, 1);
-      return { ...prev, [ex]: arr.length ? arr : [] };
+      return { ...prev, [exId]: arr.length ? arr : [{ failed: false, bw: false, w: "", r: "", tags: [] }] };
     });
   }
-  function removeExerciseToday(ex) {
-    setDraft((prev) => {
-      const next = { ...prev };
-      delete next[ex];
-      return next;
-    });
+  function toggleSkip(exId) {
+    setSkipToday((prev) => ({ ...prev, [exId]: !prev[exId] }));
   }
-  function addTempExercise() {
-    const name = prompt("Exercise name (temporary for today only)");
+  function addAdhoc() {
+    const name = prompt("Ad-hoc exercise (today only)");
     if (!name) return;
     const sets = Number(prompt("Sets", "3") || 3);
     const low = Number(prompt("Low reps", "8") || 8);
     const high = Number(prompt("High reps", "12") || 12);
-    const equip = prompt("Equip barbell|dumbbell|machine|cable|bodyweight|smith_machine", "machine") || "machine";
-    const cat = prompt("Category iso_small|upper_comp|lower_comp", "iso_small") || "iso_small";
-    setExtraExercises((prev) => [...prev, { name, sets, low, high, equip, cat }]);
+    const equip = selectOption("Equipment", EQUIP_OPTIONS, guessEquip(name));
+    const cat = selectOption(
+      "Category",
+      CAT_OPTIONS.map((c) => c.id),
+      guessCat(name)
+    );
+    const ex = { id: uid(), name, sets, low, high, equip, cat };
+    setAdhocToday((prev) => [...prev, ex]);
+    setDraft((prev) => ({
+      ...prev,
+      [ex.id]: Array.from({ length: ex.sets }).map(() => ({
+        failed: false,
+        bw: equip === "bodyweight",
+        w: equip === "bodyweight" ? 0 : "",
+        r: "",
+        tags: [],
+      })),
+    }));
   }
 
   return (
-    <section className="mt-4 sf-card p-4">
+    <section className="mt-4 rounded-2xl border border-neutral-800 p-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <label className="sf-subtle">Split</label>
+          <label className="text-xs text-neutral-400">Split</label>
           <select
             value={currentSplit.id}
-            onChange={(e) =>
-              setData((p) => ({ ...p, activeSplitId: e.target.value }))
-            }
-            className="sf-input"
+            onChange={(e) => setData((prev) => ({ ...prev, activeSplitId: e.target.value }))}
+            className="px-2 py-1 rounded-lg bg-neutral-800 border border-neutral-700 text-sm"
           >
             {data.splits.map((s) => (
               <option key={s.id} value={s.id}>
@@ -879,12 +917,11 @@ function LogView({
               </option>
             ))}
           </select>
-
-          <label className="sf-subtle ml-2">Day</label>
+          <label className="text-xs text-neutral-400 ml-2">Day</label>
           <select
             value={day?.id || ""}
             onChange={(e) => setSelectedDayId(e.target.value)}
-            className="sf-input"
+            className="px-2 py-1 rounded-lg bg-neutral-800 border border-neutral-700 text-sm"
           >
             {(currentSplit.days || []).map((d) => (
               <option key={d.id} value={d.id}>
@@ -892,177 +929,128 @@ function LogView({
               </option>
             ))}
           </select>
-
-          <label className="sf-subtle ml-2">Date</label>
+          <label className="text-xs text-neutral-400 ml-2">Date</label>
           <input
             type="date"
             value={today}
             onChange={(e) => setToday(e.target.value)}
-            className="sf-input"
+            className="px-2 py-1 rounded-lg bg-neutral-800 border border-neutral-700 text-sm"
           />
         </div>
-        <div className="sf-subtle">Tips: use BW for bodyweight, Tags for form cues</div>
+        <div className="flex gap-2">
+          <button onClick={addAdhoc} className="btn text-sm">
+            + Add exercise (today)
+          </button>
+        </div>
       </div>
 
       <div className="mt-3 grid gap-3">
-        {/* Render all exercises that currently exist in draft */}
-        {Object.keys(draft).length === 0 && (
-          <div className="text-neutral-500">No exercises loaded yet.</div>
-        )}
-
-        {Object.keys(draft).map((ex) => {
-          const exItem =
-            (day?.exercises || []).find((e) => e.name === ex) ||
-            extraExercises.find((e) => e.name === ex) || {
-              name: ex,
-              sets: draft[ex]?.length || 3,
-              low: 8,
-              high: 12,
-              cat: "iso_small",
-              equip: "machine",
-            };
-
+        {[...(day?.exercises || []), ...adhocToday].map((exItem) => {
           const m = getMeta(exItem);
-          const sets = draft[ex] || [];
-          const sug = suggestNext(m);
-
+          const exId = m.id;
+          const sets = draft[exId] || [];
           return (
-            <div key={ex} className="rounded-xl border border-neutral-800 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-semibold text-base">{ex}</div>
-                <div className="text-xs text-neutral-400">
-                  {m.low}–{m.high} reps · <span className="capitalize">{m.equip.replace('_',' ')}</span>
+            <div key={exId} className="rounded-xl border border-neutral-800 p-3">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold text-base">{m.name}</div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => toggleSkip(exId)} className="pill">
+                    {skipToday[exId] ? "Skipped" : "Skip today"}
+                  </button>
                 </div>
               </div>
 
-              {/* Suggestion box */}
-              {sug && (
-                <div className="mt-1 text-xs bg-neutral-800 border border-neutral-700 rounded-lg px-2 py-1">
-                  {sug.bw ? (
-                    <>Next time (BW): aim for the top of {m.low}–{m.high} reps.</>
-                  ) : (
-                    <>
-                      Next time: <b>{sug.next} {units}</b>{" "}
-                      <span className="text-neutral-400">
-                        (last {sug.basis.weight}{units}×{sug.basis.reps})
-                      </span>
-                    </>
-                  )}
-                </div>
-              )}
+              {!skipToday[exId] && (
+                <div className="mt-2 grid gap-2">
+                  {sets.map((s, idx) => {
+                    const live = liveSuggest(m, idx);
+                    return (
+                      <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                        <label className="col-span-3 text-[11px] text-neutral-300 flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={!!s.failed}
+                            onChange={() => updateSetFlag(setDraft, draft, exId, idx, "failed")}
+                          />{" "}
+                          failed at
+                        </label>
 
-              <div className="mt-2 grid gap-2">
-                {sets.map((s, idx) => {
-                  const live = liveSuggest(m, idx);
-                  return (
-                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                      <label className="col-span-3 text-[11px] text-neutral-300 flex items-center gap-1">
-                        <input
-                          type="checkbox"
-                          checked={!!s.failed}
-                          onChange={() => updateSetFlag(setDraft, draft, ex, idx, "failed")}
-                        />{" "}
-                        failed at
-                      </label>
+                        <label className="col-span-2 text-[11px] text-neutral-300 flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={!!s.bw}
+                            onChange={() => {
+                              setDraft((prev) => {
+                                const arr = [...(prev[exId] || [])];
+                                const row = { ...(arr[idx] || { failed: false, bw: false, w: "", r: "", tags: [] }) };
+                                row.bw = !row.bw;
+                                if (row.bw) row.w = 0;
+                                arr[idx] = row;
+                                return { ...prev, [exId]: arr };
+                              });
+                            }}
+                          />{" "}
+                          BW
+                        </label>
 
-                      {/* Weight input (BW-friendly) */}
-                      <div className="col-span-4 flex gap-2">
                         <input
-                          type="text"
+                          type="number"
                           inputMode="decimal"
-                          placeholder={m.equip === "bodyweight" ? "BW or +load" : `${units}`}
-                          value={s.w}
-                          onChange={(e) =>
-                            updateSetField(setDraft, draft, ex, idx, "w", e.target.value)
-                          }
-                          className="sf-input w-full"
+                          placeholder={`${s.bw ? "BW" : "lb"}`}
+                          value={s.bw ? 0 : s.w}
+                          disabled={s.bw}
+                          onChange={(e) => updateSetField(setDraft, draft, exId, idx, "w", e.target.value)}
+                          className="col-span-3 px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700"
                         />
-                        {m.equip === "bodyweight" && (
-                          <button
-                            onClick={() => updateSetField(setDraft, draft, ex, idx, "w", "0")}
-                            className="sf-btn sf-btn-ghost"
-                            title="Set as bodyweight (0 load)"
-                          >
-                            BW
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="reps"
+                          value={s.r}
+                          onChange={(e) => updateSetField(setDraft, draft, exId, idx, "r", e.target.value)}
+                          className="col-span-2 px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700"
+                        />
+                        <div className="col-span-2 flex gap-2">
+                          <button onClick={() => setShowTagModal({ exId, idx })} className="btn btn-ghost text-xs">
+                            Tags
                           </button>
-                        )}
-                      </div>
-
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        placeholder="reps"
-                        value={s.r}
-                        onChange={(e) => updateSetField(setDraft, draft, ex, idx, "r", e.target.value)}
-                        className="col-span-3 sf-input"
-                      />
-
-                      <div className="col-span-2 flex items-center gap-2">
-                        <button onClick={() => removeSetHere(ex, idx)} className="text-red-400">
-                          ✕
-                        </button>
-                      </div>
-
-                      {/* Controls row */}
-                      <div className="col-span-12 flex flex-wrap items-center gap-2">
-                        <button
-                          onClick={() => setTagModalFor({ ex, idx })}
-                          className="sf-btn sf-btn-ghost"
-                        >
-                          Tags
-                        </button>
+                          <button onClick={() => removeSetHere(exId, idx)} className="text-red-400">
+                            ✕
+                          </button>
+                        </div>
                         {live !== null && (
-                          <div className="sf-subtle">
-                            Next set: <b className="text-neutral-100">{live} {units}</b>
+                          <div className="col-span-12 text-[11px] text-neutral-400">
+                            Next set: <b className="text-neutral-100">{live} {/** units shown */}</b> {/** units omitted for BW */}
+                            {!s.bw && <b className="text-neutral-100"> {units}</b>}
                           </div>
                         )}
                       </div>
-                    </div>
-                  );
-                })}
-
-                <div className="flex gap-2">
-                  <button onClick={() => addSet(ex)} className="sf-btn sf-btn-ghost">
+                    );
+                  })}
+                  <button onClick={() => addSet(exId, m.equip)} className="px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-sm">
                     Add set
                   </button>
-                  <button onClick={() => removeExerciseToday(ex)} className="sf-btn sf-btn-ghost">
-                    Hide this exercise today
-                  </button>
                 </div>
-              </div>
+              )}
             </div>
           );
         })}
       </div>
 
       <div className="mt-3 flex gap-2">
-        <button onClick={saveSession} className="sf-btn sf-btn-primary">
+        <button onClick={saveSession} className="px-4 py-2 rounded-xl bg-white text-neutral-900">
           Save session
         </button>
-        <button onClick={addTempExercise} className="sf-btn sf-btn-ghost">
-          + Add temporary exercise
-        </button>
       </div>
-
-      {/* Tag Modal */}
-      {tagModalFor && (
-        <TagModal
-          ex={tagModalFor.ex}
-          idx={tagModalFor.idx}
-          draft={draft}
-          setDraft={setDraft}
-          onClose={() => setTagModalFor(null)}
-        />
-      )}
     </section>
   );
 }
-// draft helpers
 function updateSetField(setDraft, draft, ex, idx, key, val) {
   setDraft((prev) => {
     const arr = [...(prev[ex] || draft[ex] || [])];
-    const row = { ...(arr[idx] || { failed: false, w: "", r: "", tags: [] }) };
+    const row = { ...(arr[idx] || { failed: false, bw: false, w: "", r: "", tags: [] }) };
     row[key] = val;
+    if (key === "w" && row.bw) row.bw = false;
     arr[idx] = row;
     return { ...prev, [ex]: arr };
   });
@@ -1070,67 +1058,11 @@ function updateSetField(setDraft, draft, ex, idx, key, val) {
 function updateSetFlag(setDraft, draft, ex, idx, key) {
   setDraft((prev) => {
     const arr = [...(prev[ex] || draft[ex] || [])];
-    const row = { ...(arr[idx] || { failed: false, w: "", r: "", tags: [] }) };
+    const row = { ...(arr[idx] || { failed: false, bw: false, w: "", r: "", tags: [] }) };
     row[key] = !row[key];
     arr[idx] = row;
     return { ...prev, [ex]: arr };
   });
-}
-
-// ---------- Tag Modal ----------
-function TagModal({ ex, idx, draft, setDraft, onClose }) {
-  const [input, setInput] = useState("");
-  const tags = draft?.[ex]?.[idx]?.tags || [];
-
-  function toggle(tag) {
-    setDraft((prev) => {
-      const arr = [...(prev[ex] || draft[ex] || [])];
-      const row = { ...(arr[idx] || { failed: false, w: "", r: "", tags: [] }) };
-      const has = (row.tags || []).includes(tag);
-      row.tags = has ? row.tags.filter((x) => x !== tag) : [...(row.tags || []), tag];
-      arr[idx] = row;
-      return { ...prev, [ex]: arr };
-    });
-  }
-  function addCustom() {
-    const t = input.trim();
-    if (!t) return;
-    toggle(t);
-    setInput("");
-  }
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-2">
-          <div className="font-semibold">Tags for: <span className="text-neutral-300">{ex}</span></div>
-          <button onClick={onClose} className="text-neutral-400">Close</button>
-        </div>
-        <div className="max-h-48 overflow-auto hide-scrollbar grid grid-cols-2 gap-2">
-          {PRESET_TAGS.map((t) => {
-            const on = tags.includes(t);
-            return (
-              <button
-                key={t}
-                onClick={() => toggle(t)}
-                className={cx("chip", on ? "chip-on" : "chip-off")}
-              >
-                {t}
-              </button>
-            );
-          })}
-        </div>
-        <div className="mt-3 flex gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Add custom tag"
-            className="sf-input w-full"
-          />
-          <button onClick={addCustom} className="sf-btn sf-btn-ghost">Add</button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ---------- Split View ----------
@@ -1139,218 +1071,46 @@ function SplitView({
   setData,
   setActiveSplit,
   createSplit,
+  renameSplit,
   removeSplit,
+  addDay,
+  addExercise,
+  editExercise,
+  removeExercise,
+  moveExercise,
   applyParsedToNewSplit,
 }) {
-  const [mode, setMode] = useState("list"); // list | paste | templates
+  const [mode, setMode] = useState("list"); // list | paste | templates | import
   const [paste, setPaste] = useState("");
-  const [desc, setDesc] = useState({ open: false, text: "", ex: "" });
+  const [useAI, setUseAI] = useState(true);
 
-  function addManual() {
-    const name = prompt("Split name", `Split ${data.splits.length + 1}`);
-    if (!name) return;
-    const id = uid();
-    setData((prev) => ({
-      ...prev,
-      splits: [...prev.splits, { id, name, days: [] }],
-      activeSplitId: id,
-    }));
-  }
-  function addDay(splitId) {
-    const name = prompt("Day name", "Day");
-    if (!name) return;
-    setData((prev) => ({
-      ...prev,
-      splits: prev.splits.map((s) =>
-        s.id === splitId
-          ? { ...s, days: [...(s.days || []), { id: uid(), name, exercises: [] }] }
-          : s
-      ),
-    }));
-  }
-  function addExercise(splitId, dayId) {
-    const name = prompt("Exercise name");
-    if (!name) return;
-    const sets = Number(prompt("Sets", "3") || 3);
-    const low = Number(prompt("Low reps", "8") || 8);
-    const high = Number(prompt("High reps", "12") || 12);
-    setData((prev) => ({
-      ...prev,
-      splits: prev.splits.map((s) =>
-        s.id === splitId
-          ? {
-              ...s,
-              days: s.days.map((d) =>
-                d.id === dayId
-                  ? {
-                      ...d,
-                      exercises: [
-                        ...d.exercises,
-                        {
-                          name,
-                          sets,
-                          low,
-                          high,
-                          cat: guessCat(name), // AI may refine later
-                          equip: guessEquip(name),
-                        },
-                      ],
-                    }
-                  : d
-              ),
-            }
-          : s
-      ),
-    }));
-  }
-  function editExercise(splitId, dayId, idx) {
-    setData((prev) => {
-      const s = prev.splits.find((x) => x.id === splitId);
-      const d = s.days.find((x) => x.id === dayId);
-      const e = { ...d.exercises[idx] };
-      const name = prompt("Exercise name", e.name) || e.name;
-      const sets = Number(prompt("Sets", String(e.sets)) || e.sets);
-      const low = Number(prompt("Low reps", String(e.low)) || e.low);
-      const high = Number(prompt("High reps", String(e.high)) || e.high);
-      const equip = prompt(
-        "Equip barbell|dumbbell|machine|cable|bodyweight|smith_machine",
-        e.equip
-      ) || e.equip;
-      const cat = prompt("Category iso_small|upper_comp|lower_comp", e.cat) || e.cat;
-      const newSplits = prev.splits.map((sp) =>
-        sp.id !== splitId
-          ? sp
-          : {
-              ...sp,
-              days: sp.days.map((dd) =>
-                dd.id !== dayId
-                  ? dd
-                  : {
-                      ...dd,
-                      exercises: dd.exercises.map((x, i) =>
-                        i !== idx ? x : { name, sets, low, high, cat, equip }
-                      ),
-                    }
-              ),
-            }
-      );
-      return { ...prev, splits: newSplits };
-    });
-  }
-  function removeExercise(splitId, dayId, idx) {
-    setData((prev) => ({
-      ...prev,
-      splits: prev.splits.map((sp) =>
-        sp.id !== splitId
-          ? sp
-          : {
-              ...sp,
-              days: sp.days.map((dd) =>
-                dd.id !== dayId
-                  ? dd
-                  : { ...dd, exercises: dd.exercises.filter((_, i) => i !== idx) }
-              ),
-            }
-      ),
-    }));
-  }
-
-  // Reorder within a day
-  function moveExercise(splitId, dayId, idx, dir) {
-    setData((prev) => {
-      const next = JSON.parse(JSON.stringify(prev));
-      const sp = next.splits.find((s) => s.id === splitId);
-      const day = sp.days.find((d) => d.id === dayId);
-      const arr = day.exercises;
-      const j = idx + (dir === "up" ? -1 : 1);
-      if (j < 0 || j >= arr.length) return prev;
-      [arr[idx], arr[j]] = [arr[j], arr[idx]];
-      return next;
-    });
-  }
-  // Move exercise to another day
-  function moveExerciseToDay(splitId, dayId, idx) {
-    const targetDayName = prompt("Move to which day? Type exact name.");
-    if (!targetDayName) return;
-    setData((prev) => {
-      const next = JSON.parse(JSON.stringify(prev));
-      const sp = next.splits.find((s) => s.id === splitId);
-      const fromDay = sp.days.find((d) => d.id === dayId);
-      const toDay = sp.days.find((d) => d.name.toLowerCase() === targetDayName.toLowerCase());
-      if (!toDay) {
-        alert("Day not found. Check the name.");
-        return prev;
-      }
-      const [item] = fromDay.exercises.splice(idx, 1);
-      toDay.exercises.push(item);
-      return next;
-    });
-  }
-
-  // AI: Describe any exercise
-  async function describeExercise(name) {
-    try {
-      setDesc({ open: true, text: "Loading…", ex: name });
-      const r = await fetch("/api/describe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      const j = await r.json();
-      setDesc({ open: true, text: j?.description || "No description.", ex: name });
-    } catch {
-      setDesc({ open: true, text: "Could not load description.", ex: name });
-    }
-  }
-
-  // AI importer: smart-parse using /api/parse-split
-  async function smartParseAndAdd() {
-    if (!paste.trim()) {
-      alert("Paste your split text first.");
-      return;
-    }
+  async function runImport() {
     const name = prompt("Split name", "Imported Split");
     if (!name) return;
-    try {
-      const r = await fetch("/api/parse-split", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: paste }),
-      });
-      const j = await r.json();
-      if (j?.days?.length) {
-        applyParsedToNewSplit(name, j.days);
-      } else {
-        alert("AI parser found nothing; falling back to basic parser.");
-        const days = parseSplitText(paste);
-        applyParsedToNewSplit(name, days);
-      }
-    } catch {
-      const days = parseSplitText(paste);
-      applyParsedToNewSplit(name, days);
-    }
-  }
-
-  function useTemplate(t) {
-    const { name, daysText } = TEMPLATES[t];
-    const days = parseSplitText(daysText);
-    applyParsedToNewSplit(name, days);
+    await applyParsedToNewSplit(name, paste, useAI);
   }
 
   return (
-    <section className="mt-4 sf-card p-4">
+    <section className="mt-4 rounded-2xl border border-neutral-800 p-4">
       {mode === "list" && (
         <>
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm text-neutral-300">Your splits</div>
             <div className="flex gap-2">
-              <button onClick={() => setMode("paste")} className="sf-btn sf-btn-primary">
+              <button onClick={() => setMode("paste")} className="px-3 py-2 rounded-xl bg-white text-neutral-900 text-sm">
                 Import / Paste
               </button>
-              <button onClick={() => setMode("templates")} className="sf-btn sf-btn-ghost">
+              <button onClick={() => setMode("templates")} className="px-3 py-2 rounded-xl bg-neutral-800 border border-neutral-700 text-sm">
                 Templates
               </button>
-              <button onClick={addManual} className="sf-btn sf-btn-ghost">
+              <button
+                onClick={() => {
+                  const name = prompt("Split name", `Split ${data.splits.length + 1}`);
+                  if (!name) return;
+                  createSplit(name);
+                }}
+                className="px-3 py-2 rounded-xl bg-neutral-800 border border-neutral-700 text-sm"
+              >
                 Build manually
               </button>
             </div>
@@ -1364,31 +1124,17 @@ function SplitView({
                     {data.activeSplitId === s.id ? (
                       <span className="text-xs text-green-400">Active</span>
                     ) : (
-                      <button
-                        onClick={() => setActiveSplit(s.id)}
-                        className="sf-btn sf-btn-ghost text-xs"
-                      >
+                      <button onClick={() => setActiveSplit(s.id)} className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-xs">
                         Set active
                       </button>
                     )}
-                    <button
-                      onClick={() => {
-                        const newName = prompt("Split name", s.name) || s.name;
-                        setData((prev) => ({
-                          ...prev,
-                          splits: prev.splits.map((x) =>
-                            x.id === s.id ? { ...x, name: newName } : x
-                          ),
-                        }));
-                      }}
-                      className="sf-btn sf-btn-ghost text-xs"
-                    >
+                    <button onClick={() => renameSplit(s.id)} className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-xs">
                       Rename
                     </button>
-                    <button onClick={() => addDay(s.id)} className="sf-btn sf-btn-ghost text-xs">
+                    <button onClick={() => addDay(s.id)} className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-xs">
                       Add day
                     </button>
-                    <button onClick={() => removeSplit(s.id)} className="sf-btn text-red-400 text-xs">
+                    <button onClick={() => removeSplit(s.id)} className="px-2 py-1 rounded text-red-400 text-xs">
                       Delete
                     </button>
                   </div>
@@ -1400,67 +1146,34 @@ function SplitView({
                       <div className="flex items-center justify-between">
                         <div className="font-medium">{d.name}</div>
                         <div className="flex gap-2">
-                          <button
-                            onClick={() => addExercise(s.id, d.id)}
-                            className="sf-btn sf-btn-ghost text-xs"
-                          >
+                          <button onClick={() => addExercise(s.id, d.id)} className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-xs">
                             Add exercise
-                          </button>
-                          <button onClick={() => addDay(s.id)} className="sf-btn sf-btn-ghost text-xs">
-                            Add day
                           </button>
                         </div>
                       </div>
-
                       <ul className="mt-1 space-y-1">
                         {d.exercises.map((e, i) => (
-                          <li
-                            key={i}
-                            className="flex items-center justify-between text-sm bg-neutral-900 border border-neutral-800 rounded-lg px-2 py-1"
-                          >
-                            <span className="flex-1">
+                          <li key={e.id} className="flex items-center justify-between text-sm bg-neutral-900 border border-neutral-800 rounded-lg px-2 py-1">
+                            <span>
                               {e.name}{" "}
                               <span className="text-neutral-500">
                                 ({e.sets}×{e.low}–{e.high} • {e.equip}, {e.cat})
                               </span>
                             </span>
                             <span className="flex gap-1">
-                              <button
-                                onClick={() => describeExercise(e.name)}
-                                className="sf-btn sf-btn-ghost text-xs"
-                                title="AI description"
-                              >
-                                Desc
-                              </button>
-                              <button
-                                onClick={() => moveExercise(s.id, d.id, i, "up")}
-                                className="sf-btn sf-btn-ghost text-xs"
-                              >
+                              <button onClick={() => moveExercise(s.id, d.id, i, "up")} className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-xs">
                                 ↑
                               </button>
-                              <button
-                                onClick={() => moveExercise(s.id, d.id, i, "down")}
-                                className="sf-btn sf-btn-ghost text-xs"
-                              >
+                              <button onClick={() => moveExercise(s.id, d.id, i, "down")} className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-xs">
                                 ↓
                               </button>
-                              <button
-                                onClick={() => moveExerciseToDay(s.id, d.id, i)}
-                                className="sf-btn sf-btn-ghost text-xs"
-                                title="Move to another day by name"
-                              >
-                                Move
+                              <button onClick={() => describeExercise(e.name)} className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-xs">
+                                Desc
                               </button>
-                              <button
-                                onClick={() => editExercise(s.id, d.id, i)}
-                                className="sf-btn sf-btn-ghost text-xs"
-                              >
+                              <button onClick={() => editExercise(s.id, d.id, i)} className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-xs">
                                 Edit
                               </button>
-                              <button
-                                onClick={() => removeExercise(s.id, d.id, i)}
-                                className="sf-btn text-red-400 text-xs"
-                              >
+                              <button onClick={() => removeExercise(s.id, d.id, i)} className="px-2 py-1 rounded text-red-400 text-xs">
                                 Remove
                               </button>
                             </span>
@@ -1472,85 +1185,52 @@ function SplitView({
                 </div>
               </div>
             ))}
-            {data.splits.length === 0 && (
-              <div className="text-neutral-500">No splits yet</div>
-            )}
+            {data.splits.length === 0 && <div className="text-neutral-500">No splits yet</div>}
           </div>
-
-          {/* AI description modal */}
-          {desc.open && (
-            <div className="modal-backdrop" onClick={() => setDesc({ open: false, text: "", ex: "" })}>
-              <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-                <div className="font-semibold mb-2">
-                  {desc.ex ? `How to: ${desc.ex}` : "Exercise description"}
-                </div>
-                <div className="text-sm text-neutral-200 whitespace-pre-wrap">
-                  {desc.text || "—"}
-                </div>
-              </div>
-            </div>
-          )}
         </>
       )}
 
       {mode === "paste" && (
-        <div className="rounded-xl overflow-hidden">
-          <div className="bg-import relative">
-            <div className="bg-overlay">
-              <div className="p-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">Paste your split</h3>
-                  <button onClick={() => setMode("list")} className="text-sm text-neutral-300">
-                    Back
-                  </button>
-                </div>
-
-                <textarea
-                  value={paste}
-                  onChange={(e) => setPaste(e.target.value)}
-                  rows={10}
-                  placeholder={`PUSH A\nIncline Barbell Press — 3 × 6–10\n...\n\nPULL A\n...`}
-                  className="mt-2 w-full sf-input"
+        <div className="bg-import anime-overlay rounded-2xl p-3">
+          <div className="glass-strong p-3 rounded-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Paste your split</h3>
+              <button onClick={() => setMode("list")} className="text-sm text-neutral-300">
+                Back
+              </button>
+            </div>
+            <textarea
+              value={paste}
+              onChange={(e) => setPaste(e.target.value)}
+              rows={10}
+              placeholder={`PUSH A\nIncline Barbell Press — 3 × 6–10\n...`}
+              className="mt-2 w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-sm"
+            />
+            <div className="mt-2 flex items-center gap-3">
+              <label className="text-sm flex items-center gap-2">
+                <input type="checkbox" checked={useAI} onChange={(e) => setUseAI(e.target.checked)} /> Use AI importer
+              </label>
+              <button onClick={runImport} className="btn btn-primary">
+                Use this split
+              </button>
+              <label className="btn btn-ghost cursor-pointer">
+                Upload .txt
+                <input
+                  type="file"
+                  accept="text/plain"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const r = new FileReader();
+                    r.onload = () => setPaste(String(r.result));
+                    r.readAsText(f);
+                  }}
                 />
-
-                <div className="mt-2 flex items-center gap-2">
-                  <button onClick={smartParseAndAdd} className="sf-btn sf-btn-primary">
-                    Smart parse with AI
-                  </button>
-                  <button
-                    onClick={() => {
-                      const name = prompt("Split name", "Imported Split");
-                      if (!name) return;
-                      const days = parseSplitText(paste);
-                      applyParsedToNewSplit(name, days);
-                    }}
-                    className="sf-btn sf-btn-ghost"
-                  >
-                    Basic parse
-                  </button>
-
-                  <label className="sf-btn sf-btn-ghost cursor-pointer">
-                    Upload .txt
-                    <input
-                      type="file"
-                      accept="text/plain"
-                      className="hidden"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (!f) return;
-                        const r = new FileReader();
-                        r.onload = () => setPaste(String(r.result));
-                        r.readAsText(f);
-                      }}
-                    />
-                  </label>
-                </div>
-                <p className="caption mt-2">
-                  Tip: Headings like "PUSH A", "LEGS B" or weekdays become days automatically.
-                </p>
-              </div>
+              </label>
             </div>
           </div>
+          <div className="coach-sticker" />
         </div>
       )}
 
@@ -1564,17 +1244,15 @@ function SplitView({
           </div>
           <div className="mt-2 grid gap-2">
             {Object.keys(TEMPLATES).map((key) => (
-              <div
-                key={key}
-                className="rounded-lg border border-neutral-800 p-2 flex items-center justify-between"
-              >
+              <div key={key} className="rounded-lg border border-neutral-800 p-2 flex items-center justify-between">
                 <div>
                   <div className="font-medium">{TEMPLATES[key].name}</div>
-                  <div className="text-xs text-neutral-400">
-                    {TEMPLATES[key].blurb}
-                  </div>
+                  <div className="text-xs text-neutral-400">{TEMPLATES[key].blurb}</div>
                 </div>
-                <button onClick={() => useTemplate(key)} className="sf-btn sf-btn-primary text-sm">
+                <button
+                  onClick={() => applyParsedToNewSplit(TEMPLATES[key].name, TEMPLATES[key].daysText, false)}
+                  className="px-3 py-2 rounded-xl bg-white text-neutral-900 text-sm"
+                >
                   Use
                 </button>
               </div>
@@ -1586,6 +1264,16 @@ function SplitView({
   );
 }
 
+async function describeExercise(name) {
+  try {
+    const r = await fetch("/api/describe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    const j = await r.json();
+    alert(j?.description || "No description available.");
+  } catch {
+    alert("Description unavailable right now.");
+  }
+}
+
 // ---------- History ----------
 function HistoryView({ data }) {
   const activeId = data.activeSplitId;
@@ -1595,57 +1283,34 @@ function HistoryView({ data }) {
     const x = q.trim().toLowerCase();
     if (!x) return items;
     return items.filter(
-      (s) =>
-        s.dayName.toLowerCase().includes(x) ||
-        s.entries.some((e) => e.exercise.toLowerCase().includes(x))
+      (s) => s.dayName.toLowerCase().includes(x) || s.entries.some((e) => e.exercise.toLowerCase().includes(x))
     );
   }, [q, items]);
 
   return (
-    <section className="mt-4 sf-card p-4">
+    <section className="mt-4 rounded-2xl border border-neutral-800 p-4">
       <div className="flex items-center gap-2">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search by day/exercise"
-          className="w-full sf-input"
-        />
-        <div className="sf-subtle whitespace-nowrap">
-          {filtered.length} sessions
-        </div>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by day/exercise" className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-sm" />
+        <div className="text-xs text-neutral-400 whitespace-nowrap">{filtered.length} sessions</div>
       </div>
-
       <div className="mt-3 grid gap-2">
-        {activeId ? null : (
-          <div className="text-neutral-500">
-            Pick an active split to see past sessions.
-          </div>
-        )}
-        {activeId && filtered.length === 0 && (
-          <div className="text-neutral-500">No sessions yet for this split</div>
-        )}
+        {activeId ? null : <div className="text-neutral-500">Pick an active split to see past sessions.</div>}
+        {activeId && filtered.length === 0 && <div className="text-neutral-500">No sessions yet for this split</div>}
         {filtered.map((s) => (
           <div key={s.id} className="rounded-xl border border-neutral-800 p-3">
             <div className="flex items-center justify-between text-sm">
               <div className="font-medium">
                 {s.dateISO} · {s.dayName}
               </div>
+              <div className="text-neutral-400">{s.entries.length} exercises</div>
             </div>
             <div className="mt-2 grid gap-1 text-xs">
               {s.entries.map((e, i) => (
-                <div
-                  key={i}
-                  className="rounded-lg bg-neutral-900 border border-neutral-800 p-2"
-                >
+                <div key={i} className="rounded-lg bg-neutral-900 border border-neutral-800 p-2">
                   <div className="font-medium">{e.exercise}</div>
                   <div className="text-neutral-300">
                     {e.sets
-                      .map(
-                        (t) =>
-                          `${t.failed ? "✖ " : ""}${t.w}${s.units}×${t.r}${
-                            t.tags?.length ? ` [${t.tags.join(", ")}]` : ""
-                          }`
-                      )
+                      .map((t) => `${t.failed ? "✖ " : ""}${t.bw ? "BW" : t.w + s.units}×${t.r}${t.tags?.length ? ` [${t.tags.join(", ")}]` : ""}`)
                       .join(", ")}
                   </div>
                 </div>
@@ -1658,160 +1323,111 @@ function HistoryView({ data }) {
   );
 }
 
-// ---------- Coach View ----------
-function CoachView() {
-  const [msgs, setMsgs] = useState([
-    { role: "assistant", content: "Yo! I’m your hypertrophy coach. Ask about programming, exercise tweaks, diet basics—or say 'help' for app navigation." },
+// ---------- Coach Chat ----------
+function CoachChat({ data }) {
+  const [messages, setMessages] = useState([
+    {
+      role: "assistant",
+      content:
+        "Hey! I’m your hypertrophy coach. Ask me about programming, form cues, exercise swaps, diet targets—or type 'help' for app tips.",
+    },
   ]);
-  const [input, setInput] = useState("");
+  const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const quick = [
-    "Help: how to import my split",
-    "Help: add a temporary exercise",
-    "Best rep ranges for arms?",
-    "How often should I train calves?",
-    "Diet: protein per lb?",
-  ];
+  const context = {
+    activeSplit: data.splits.find((s) => s.id === data.activeSplitId)?.name || "",
+    splitDays: data.splits.find((s) => s.id === data.activeSplitId)?.days?.map((d) => d.name) || [],
+  };
 
   async function send() {
-    const text = input.trim();
-    if (!text) return;
-    setMsgs((m) => [...m, { role: "user", content: text }]);
-    setInput("");
+    const msg = text.trim();
+    if (!msg) return;
+    setMessages((m) => [...m, { role: "user", content: msg }]);
+    setText("");
     setBusy(true);
     try {
       const r = await fetch("/api/coach-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [...msgs, { role: "user", content: text }] }),
+        body: JSON.stringify({ message: msg, context }),
       });
       const j = await r.json();
-      const resp = j?.reply || "Hmm—couldn't get advice right now.";
-      setMsgs((m) => [...m, { role: "assistant", content: resp }]);
+      setMessages((m) => [...m, { role: "assistant", content: j?.reply || "(no reply)" }]);
     } catch {
-      setMsgs((m) => [...m, { role: "assistant", content: "Offline or server error—try again later." }]);
+      setMessages((m) => [...m, { role: "assistant", content: "Network hiccup—try again." }]);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <section className="mt-4 sf-card p-4">
-      <div className="flex items-center justify-between">
-        <div className="font-semibold">Coach</div>
-        <img src="/images/coach-sticker.png" alt="" className="h-10 w-auto opacity-90" />
-      </div>
-      <div className="mt-2 grid gap-2 max-h-80 overflow-auto hide-scrollbar rounded-lg border border-neutral-800 p-2 bg-neutral-900">
-        {msgs.map((m, i) => (
-          <div
-            key={i}
-            className={cx(
-              "text-sm rounded-lg px-3 py-2 max-w-[85%]",
-              m.role === "assistant"
-                ? "bg-neutral-800 border border-neutral-700 self-start"
-                : "bg-white text-neutral-900 ml-auto"
-            )}
-          >
-            {m.content}
+    <section className="mt-4 rounded-2xl border border-neutral-800 p-4">
+      <div className="text-sm text-neutral-300 mb-2">Hypertrophy Coach</div>
+      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-2 h-80 overflow-y-auto space-y-2">
+        {messages.map((m, i) => (
+          <div key={i} className={cx("text-sm", m.role === "assistant" ? "text-neutral-200" : "text-neutral-100")}>
+            <b className="text-neutral-400">{m.role === "assistant" ? "Coach" : "You"}:</b> {m.content}
           </div>
-        ))}
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {quick.map((q) => (
-          <button key={q} onClick={() => setInput(q)} className="chip chip-off">
-            {q}
-          </button>
         ))}
       </div>
       <div className="mt-2 flex gap-2">
         <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask your coach…"
-          className="sf-input w-full"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
+          placeholder="Ask about training, form, diet—or type 'help'"
+          className="input"
         />
-        <button onClick={send} disabled={busy} className="sf-btn sf-btn-primary">
-          {busy ? "…" : "Send"}
+        <button onClick={send} disabled={busy} className="btn btn-primary">
+          {busy ? "..." : "Send"}
         </button>
       </div>
-      <p className="caption mt-2">
-        Coach uses evidence-based heuristics. For health issues, see a professional.
-      </p>
+      <div className="mt-2 flex gap-2 flex-wrap">
+        {["Help", "Best split for arms?", "Swap for leg press", "Protein target at 180 lb?"].map((q) => (
+          <button key={q} onClick={() => setText(q)} className="pill">
+            {q}
+          </button>
+        ))}
+      </div>
     </section>
   );
 }
 
-// ---------- First-run Import screen ----------
-function ImportFirstRun({ onUse }) {
-  const [text, setText] = useState("");
-
-  async function smartParse() {
-    if (!text.trim()) {
-      alert("Paste your split first.");
-      return;
-    }
-    const name = prompt("Split name", "My Split");
-    if (!name) return;
-    try {
-      const r = await fetch("/api/parse-split", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      const j = await r.json();
-      if (j?.days?.length) {
-        onUse(name, j.days);
-      } else {
-        const basic = parseSplitText(text);
-        onUse(name, basic);
-      }
-    } catch {
-      const basic = parseSplitText(text);
-      onUse(name, basic);
-    }
-  }
-
+// ---------- Tag Modal (inline) ----------
+function TagModal({ isOpen, preset, selected, onToggle, onClose, tagDraft, setTagDraft, onAddCustom }) {
+  if (!isOpen) return null;
   return (
-    <section className="mt-4 rounded-2xl overflow-hidden">
-      <div className="bg-import relative">
-        <div className="bg-overlay">
-          <div className="p-4">
-            <h2 className="font-semibold">Paste / Import your first split</h2>
-            <p className="text-sm text-neutral-300">
-              Paste from Notes/Docs (or upload .txt). You can edit later.
-            </p>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={10}
-              className="mt-2 w-full sf-input"
-            />
-            <div className="mt-2 flex gap-2">
-              <button onClick={smartParse} className="sf-btn sf-btn-primary">
-                Smart parse with AI
-              </button>
-              <label className="sf-btn sf-btn-ghost cursor-pointer">
-                Upload .txt
-                <input
-                  type="file"
-                  accept="text/plain"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    const r = new FileReader();
-                    r.onload = () => setText(String(r.result));
-                    r.readAsText(f);
-                  }}
-                />
-              </label>
-            </div>
-          </div>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+      <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 w-full max-w-sm">
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-semibold">Tags</div>
+          <button onClick={onClose} className="text-neutral-400">
+            ✕
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {preset.map((t) => (
+            <button
+              key={t}
+              onClick={() => onToggle(t)}
+              className={cx(
+                "px-2 py-1 rounded-lg border text-sm",
+                selected.includes(t) ? "bg-white text-neutral-900 border-white" : "bg-neutral-800 border-neutral-700"
+              )}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 flex gap-2">
+          <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} placeholder="+ custom tag" className="input" />
+          <button onClick={onAddCustom} className="btn">
+            Add
+          </button>
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -1950,47 +1566,11 @@ Calves — 4 × 15`,
   },
 };
 
-// ---------- Chart helpers ----------
-function chartDataFor(data) {
-  return function (exName) {
-    const rows = [];
-    for (const s of [...data.sessions].reverse()) {
-      if (s.splitId !== data.activeSplitId) continue;
-      const e = s.entries.find((x) => x.exercise === exName);
-      if (!e) continue;
-      const top = bestSetByLoad(e.sets);
-      if (top) rows.push({ date: s.dateISO, weight: Number(top.w) });
-    }
-    return rows;
-  };
-}
-function ChartToggle({ ex, chartDataFor }) {
-  const [show, setShow] = useState(false);
-  return (
-    <>
-      <button
-        onClick={() => setShow((v) => !v)}
-        className="mt-2 text-[11px] px-2 py-1 rounded bg-neutral-800 border border-neutral-700"
-      >
-        {show ? "Hide chart" : "Show chart"}
-      </button>
-      {show && (
-        <div className="mt-2 h-36 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartDataFor(ex)} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2d2d2d" />
-              <XAxis dataKey="date" stroke="#a3a3a3" tick={{ fontSize: 10 }} />
-              <YAxis stroke="#a3a3a3" tick={{ fontSize: 10 }} />
-              <Tooltip
-                wrapperStyle={{ backgroundColor: "#111", border: "1px solid #444" }}
-                labelStyle={{ color: "#ddd" }}
-                itemStyle={{ color: "#ddd" }}
-              />
-              <Line type="monotone" dataKey="weight" dot={false} stroke="#ffffff" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-    </>
-  );
+// ---------- Small util ----------
+function selectOption(label, opts, current) {
+  const s = prompt(`${label}:\n${opts.join(" | ")}\n(default: ${current || opts[0]})`, current || opts[0]);
+  if (!s) return current || opts[0];
+  const v = s.trim().toLowerCase();
+  const hit = opts.find((o) => String(o).toLowerCase() === v);
+  return hit || current || opts[0];
 }

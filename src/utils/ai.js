@@ -1,41 +1,30 @@
-export async function aiParseSplit(text) {
-  const r = await fetch("/api/parse-split", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ text })
+// src/utils/ai.js
+async function postJSON(url, body) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
   });
-  const j = await r.json();
-  if (!j.ok) throw new Error("parse failed");
-  return j;
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+export async function aiParseSplit(text) {
+  // your /api/parse-split serverless route
+  const r = await postJSON("/api/parse-split", { text });
+  if (!r.ok) throw new Error("parse failed");
+  return r.out;
 }
 
 export async function aiExerciseInfo(name) {
-  const r = await fetch("/api/exercise-info", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ name })
-  });
-  const j = await r.json();
-  if (!j.ok) return {};
-  return j;
+  const r = await postJSON("/api/exercise-info", { name });
+  if (!r.ok) return {};
+  return r.info || {};
 }
 
-export async function aiDescribe({ name, equip, cat }) {
-  const r = await fetch("/api/describe", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ name, equip, cat })
-  });
-  const j = await r.json();
-  return j?.text || "";
-}
-
-export async function aiSuggest(payload) {
-  const r = await fetch("/api/suggest", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify(payload)
-  });
-  const j = await r.json();
-  return j?.next || { weight:null, reps:null, note:"" };
+export async function coachChatSend(messages, { units = "lb", day = "" } = {}) {
+  // IMPORTANT: hits /api/coach-chat (you already have api/coach-chat.js)
+  const r = await postJSON("/api/coach-chat", { messages, units, day });
+  if (!r.ok) throw new Error("chat failed");
+  return r.reply || "";
 }

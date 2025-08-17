@@ -1,3 +1,5 @@
+/* src/index.css */
+
 /* Tailwind base */
 @tailwind base;
 @tailwind components;
@@ -17,7 +19,9 @@
   --border: #2a2a2a;
 }
 
-html, body, #root { height: 100%; }
+html, body, #root {
+  height: 100%;
+}
 
 html, body {
   background: var(--bg);
@@ -25,11 +29,14 @@ html, body {
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
 }
 
-/* Full-height helper */
-.fullscreen { min-height: 100svh; }
+/* Helpful utility to make a full-height section */
+.fullscreen {
+  min-height: 100svh; /* supports mobile safe height */
+}
 
 /* =========
-   Anime backgrounds (webp)
+   Anime backgrounds (.webp)
+   Apply these to a top-level wrapper on the relevant screens
    ========= */
 .bg-login {
   background-image: url('/images/bg-anime-login.webp');
@@ -37,6 +44,7 @@ html, body {
   background-position: center;
   background-repeat: no-repeat;
 }
+
 .bg-import {
   background-image: url('/images/bg-anime-import.webp');
   background-size: cover;
@@ -44,22 +52,34 @@ html, body {
   background-repeat: no-repeat;
 }
 
-/* Vignette for readability on busy art */
-.anime-overlay { position: relative; }
+/* Subtle dark vignette overlay for readability over busy art */
+.anime-overlay {
+  position: relative;
+}
+
 .anime-overlay::after {
   content: "";
-  position: absolute; inset: 0; pointer-events: none;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
   background: radial-gradient(
-    120% 90% at 50% 10%,
-    rgba(0,0,0,0.15) 0%,
-    rgba(0,0,0,0.35) 45%,
-    rgba(0,0,0,0.65) 100%
-  );
+      120% 90% at 50% 10%,
+      rgba(0,0,0,0.15) 0%,
+      rgba(0,0,0,0.35) 45%,
+      rgba(0,0,0,0.65) 100%
+    );
 }
-.anime-overlay > * { position: relative; z-index: 1; }
+
+/* Put content above the overlay */
+.anime-overlay > * {
+  position: relative;
+  z-index: 1;
+}
 
 /* =========
    Coach sticker / avatar
+   Use with: <div class="coach-sticker"></div>
+   Position container should be relative (e.g., wrapper has 'relative')
    ========= */
 .coach-sticker {
   position: absolute;
@@ -67,22 +87,35 @@ html, body {
   bottom: 1rem;
   width: clamp(84px, 26vw, 160px);
   aspect-ratio: 1/1;
-  background-image: url('/images/coach-sticker.webp'); /* decorative sticker */
+  background-image: url('/images/coach-sticker.webp');
   background-size: contain;
   background-position: center;
   background-repeat: no-repeat;
   filter: drop-shadow(0 6px 14px rgba(0,0,0,0.45));
   animation: floaty 5.5s ease-in-out infinite;
-  pointer-events: none;
+  pointer-events: none; /* decorative */
 }
+
 @keyframes floaty {
-  0%   { transform: translateY(0) }
-  50%  { transform: translateY(-6px) }
-  100% { transform: translateY(0) }
+  0%   { transform: translateY(0px);   }
+  50%  { transform: translateY(-6px);  }
+  100% { transform: translateY(0px);   }
+}
+
+/* Extra placement rule so chat sticker never blocks the input */
+.coach-sticker--chat {
+  right: 0.75rem;
+  bottom: 0.75rem;
+  width: clamp(72px, 22vw, 140px);
+  z-index: 0;           /* sits behind chat content */
+  opacity: 0.85;
+}
+@media (max-width: 520px) {
+  .coach-sticker--chat { width: 96px; opacity: .75; }
 }
 
 /* =========
-   “Glass” cards (nice over art)
+   “Glass” card helpers (nice over art)
    ========= */
 .glass {
   backdrop-filter: blur(8px);
@@ -91,6 +124,7 @@ html, body {
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 0.9rem;
 }
+
 .glass-strong {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -100,21 +134,27 @@ html, body {
 }
 
 /* =========
-   Buttons (Tailwind still works — these are handy defaults)
+   Buttons (helpers; Tailwind still works)
    ========= */
 .btn {
   @apply inline-flex items-center justify-center px-3 py-2 rounded-xl text-sm border transition;
   background: #181818;
   border-color: var(--border);
 }
-.btn:hover { background: #1f1f1f; }
+
+.btn:hover {
+  background: #1f1f1f;
+}
 
 .btn-primary {
   background: #ffffff;
   color: #111;
   border-color: #ffffff;
 }
-.btn-primary:hover { filter: brightness(0.96); }
+
+.btn-primary:hover {
+  filter: brightness(0.96);
+}
 
 .btn-ghost {
   background: transparent;
@@ -136,12 +176,26 @@ html, body {
   color: var(--text);
   border: 1px solid var(--border);
 }
-.input::placeholder { color: #7a7a7a; }
+
+.input::placeholder {
+  color: #7a7a7a;
+}
 
 /* Scrollbar (desktop polish) */
-* { scrollbar-width: thin; scrollbar-color: #3a3a3a transparent; }
-*::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 999px; }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3a3a3a transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+  border-radius: 999px;
+}
 
 /* =========
    Safe padding for mobile notches
@@ -150,9 +204,18 @@ html, body {
   padding-left: max(0.75rem, env(safe-area-inset-left));
   padding-right: max(0.75rem, env(safe-area-inset-right));
 }
-.safe-pt { padding-top: max(1rem, env(safe-area-inset-top)); }
-.safe-pb { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
-/* === Chat bubbles “thinking” === */
+
+.safe-pt {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+
+.safe-pb {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* =========
+   Chat "thinking" bubbles
+   ========= */
 .bubble-dots {
   position: relative;
 }
@@ -171,16 +234,3 @@ html, body {
   50% { filter: opacity(1); }
   100% { filter: opacity(0.3); }
 }
-
-/* Sticker placement tweaks: never block inputs */
-.coach-sticker--chat {
-  right: 0.75rem;
-  bottom: 0.75rem;
-  width: clamp(72px, 22vw, 140px);
-  z-index: 0;           /* sits behind chat content */
-  opacity: 0.85;
-}
-@media (max-width: 520px) {
-  .coach-sticker--chat { width: 96px; opacity: .75; }
-}
-

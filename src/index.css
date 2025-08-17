@@ -152,3 +152,35 @@ html, body {
 }
 .safe-pt { padding-top: max(1rem, env(safe-area-inset-top)); }
 .safe-pb { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+/* === Chat bubbles “thinking” === */
+.bubble-dots {
+  position: relative;
+}
+.bubble-dots::after {
+  content: "";
+  display: inline-block;
+  width: 30px; height: 8px;
+  background:
+    radial-gradient(circle, #d4d4d4 40%, transparent 42%) left center/8px 8px no-repeat,
+    radial-gradient(circle, #d4d4d4 40%, transparent 42%) center center/8px 8px no-repeat,
+    radial-gradient(circle, #d4d4d4 40%, transparent 42%) right center/8px 8px no-repeat;
+  animation: dots 1.3s infinite;
+}
+@keyframes dots {
+  0% { filter: opacity(0.3); }
+  50% { filter: opacity(1); }
+  100% { filter: opacity(0.3); }
+}
+
+/* Sticker placement tweaks: never block inputs */
+.coach-sticker--chat {
+  right: 0.75rem;
+  bottom: 0.75rem;
+  width: clamp(72px, 22vw, 140px);
+  z-index: 0;           /* sits behind chat content */
+  opacity: 0.85;
+}
+@media (max-width: 520px) {
+  .coach-sticker--chat { width: 96px; opacity: .75; }
+}
+

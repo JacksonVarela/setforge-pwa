@@ -1,7 +1,11 @@
+// --- App.jsx imports (replace your current import block with this) ---
 import React, { useEffect, useMemo, useState } from "react";
-import { initFirebaseApp } from "./firebase";
+
+// Importing this module guarantees the default Firebase app exists
+import app, { auth, initFirebaseApp } from "./firebase";
+
 import {
-  getAuth,
+  getAuth,                 // still available if you want it
   onAuthStateChanged,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -11,6 +15,13 @@ import {
 
 import ImporterAI from "./components/ImporterAI";
 import CoachChat from "./components/CoachChat";
+
+// Make extra sure the default app is created (no-op if already created)
+initFirebaseApp();
+// Optional: if you prefer a local const
+// const auth = getAuth(); // you can use this instead of imported `auth`
+// --- end imports ---
+
 
 // Small wrappers to our API routes (utils/ai.js also has these; duplicating here is safe)
 async function postJSON(url, body) {

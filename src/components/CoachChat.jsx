@@ -1,154 +1,105 @@
 // src/components/CoachChat.jsx
 import React, { useEffect, useRef, useState } from "react";
+import { coachChatSend } from "../utils/ai";
 
-function useLocalState(key, initial) {
+const BOT_NAME = "Akai Ronin"; // red/black anime vibe
+
+function useLocalState(key, init) {
   const [v, setV] = useState(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : initial;
-    } catch {
-      return initial;
-    }
+    try { return JSON.parse(localStorage.getItem(key)) ?? init; }
+    catch { return init; }
   });
-  useEffect(() => {
-    try { localStorage.setItem(key, JSON.stringify(v)); } catch {}
-  }, [key, v]);
+  useEffect(() => { localStorage.setItem(key, JSON.stringify(v)); }, [key, v]);
   return [v, setV];
 }
 
-const SUGGESTIONS = [
-  "Explain failure vs. not to failure",
-  "Help me reorder exercises",
-  "Make a plan to progress bench press",
-  "Suggest attachment for straight-arm pulldown",
-  "How do I import a messy split?"
-];
-
-export default function CoachChat({ units = "lb" }) {
+export default function CoachChat({ units = "lb", day = "" }) {
   const [messages, setMessages] = useLocalState("sf.chat", [
-    {
-      role: "assistant",
-      content:
-        "Yo! I’m **Kurogane**, SetForge Coach. Ask me about hypertrophy programming, diet, or how to use any screen. I can also help you reorganize a split or interpret your import."
-    }
+    { role: "assistant", content: `Yo! I'm ${BOT_NAME}. Ask me about hypertrophy programming, diet, or how to use any screen. (I can also help you reorganize a split or interpret your import.)` }
   ]);
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const listRef = useRef(null);
+  const [typing, setTyping] = useState(false);
+  const endRef = useRef(null);
 
-  useEffect(() => {
-    listRef.current?.lastElementChild?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, busy]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, typing]);
 
-  async function ask(text) {
-    if (!text.trim()) return;
-    const next = [...messages, { role: "user", content: text.trim() }];
-    setMessages(next);
+  async function send() {
+    const text = input.trim();
+    if (!text) return;
     setInput("");
-    setBusy(true);
+    const next = [...messages, { role: "user", content: text }];
+    setMessages(next);
+    setTyping(true);
 
     try {
-      const r = await fetch("/api/coach-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next.slice(-10), units })
-      });
-      const j = await r.json();
-      const reply = j?.reply?.trim?.() || "I had trouble answering—try again in a bit.";
-      setMessages((m) => [...m, { role: "assistant", content: reply }]);
-    } catch {
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: "API not reachable. Check OPENAI_API_KEY in Vercel." }
-      ]);
+      const reply = await coachChatSend(next, { units, day });
+      setMessages(m => [...m, { role: "assistant", content: reply || "…" }]);
+    } catch (e) {
+      setMessages(m => [...m, { role: "assistant", content: "Hmm, I couldn’t reach my endpoint. Double-check /api/coach-chat and your OPENAI_API_KEY in Vercel Project → Settings → Environment Variables." }]);
     } finally {
-      setBusy(false);
+      setTyping(false);
     }
   }
 
+  function quick(q) {
+    setInput(q);
+  }
+
   return (
-    <section className="relative">
-      {/* header */}
+    <section className="relative rounded-2xl border border-neutral-800 p-4">
       <div className="flex items-center gap-3 mb-3">
-        <img
-          src="/images/chat-coach.webp"
-          alt="Kurogane"
-          className="w-9 h-9 rounded-full object-cover border border-neutral-700"
-        />
+        <img src="/images/chat-coach.webp" alt="" className="w-8 h-8 rounded-full object-cover" />
         <div>
-          <div className="font-semibold leading-tight">Kurogane • SetForge Coach</div>
-          <div className="text-xs text-neutral-400">
-            Evidence-based hypertrophy, concise answers. Units: {units}
-          </div>
+          <div className="font-semibold">{BOT_NAME}</div>
+          <div className="text-xs text-neutral-400">Online</div>
         </div>
       </div>
 
-      {/* quick suggestions */}
       <div className="flex flex-wrap gap-2 mb-3">
-        {SUGGESTIONS.map((s) => (
-          <button key={s} className="pill hover:brightness-110" onClick={() => ask(s)}>
-            {s}
-          </button>
-        ))}
+        <button className="pill cursor-pointer" onClick={() => quick("Help me reorder exercises")}>Help me reorder exercises</button>
+        <button className="pill cursor-pointer" onClick={() => quick("Explain failure vs. not to failure")}>Explain failure vs. not to failure</button>
+        <button className="pill cursor-pointer" onClick={() => quick("Suggest attachment for straight-arm pulldown")}>Suggest attachment for straight-arm pulldown</button>
+        <button className="pill cursor-pointer" onClick={() => quick("How do I import a messy split?")}>How do I import a messy split?</button>
       </div>
 
-      {/* messages */}
-      <div
-        className="glass-strong p-3 rounded-2xl min-h-[42svh] max-h-[60svh] overflow-y-auto pb-28"
-        ref={listRef}
-      >
+      <div className="h-[52vh] overflow-auto rounded-xl bg-neutral-950/60 border border-neutral-800 p-3 space-y-3">
         {messages.map((m, i) => (
-          <div
-            key={i}
-            className={`my-2 flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-[80%] whitespace-pre-wrap leading-relaxed rounded-2xl px-3 py-2 border ${
-                m.role === "user"
-                  ? "bg-white text-black border-white"
-                  : "bg-neutral-900 border-neutral-800"
-              }`}
-              dangerouslySetInnerHTML={{ __html: mdInline(m.content) }}
-            />
+          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[78%] ${m.role === "user" ? "bg-white text-black" : "glass"} rounded-2xl px-3 py-2 text-sm leading-relaxed`}>
+              {m.content}
+            </div>
           </div>
         ))}
-
-        {/* thinking bubbles while pending */}
-        {busy && (
-          <div className="my-2 flex justify-start">
-            <div className="bubble-dots border border-neutral-800 bg-neutral-900 px-3 py-2 rounded-2xl" />
+        {typing && (
+          <div className="flex justify-start">
+            <div className="glass rounded-2xl px-3 py-2">
+              <div className="typing">
+                <span className="typing-dot"></span>
+                <span className="typing-dot"></span>
+                <span className="typing-dot"></span>
+              </div>
+            </div>
           </div>
         )}
+        <div ref={endRef} />
       </div>
 
-      {/* input */}
-      <form
-        className="mt-3 flex items-center gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          ask(input);
-        }}
-      >
+      <div className="mt-3 flex items-center gap-2">
         <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask about training, diet, or app navigation…"
           className="input flex-1"
+          placeholder="Ask about training, diet, or app navigation…"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && send()}
         />
-        <button className="btn-primary disabled:opacity-60" disabled={busy || !input.trim()}>
-          Send
-        </button>
-      </form>
+        <button className="btn-primary" onClick={send}>Send</button>
+      </div>
 
-      {/* decorative sticker (never blocks) */}
-      <div className="coach-sticker coach-sticker--chat" aria-hidden />
+      {/* coach sticker – fixed, never blocks inputs */}
+      <div className="coach-sticker coach-sticker--chat" aria-hidden="true" />
+      <div className="text-[11px] text-neutral-500 mt-2">
+        Evidence-based hypertrophy focus. This chat can also guide you through SetForge (“how to move an exercise”, etc).
+      </div>
     </section>
   );
-}
-
-/** tiny MD inline -> HTML */
-function mdInline(s = "") {
-  return s
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/`(.+?)`/g, "<code>$1</code>");
 }

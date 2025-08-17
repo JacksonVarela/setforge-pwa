@@ -18,6 +18,7 @@
 }
 
 html, body, #root { height: 100%; }
+
 html, body {
   background: var(--bg);
   color: var(--text);
@@ -31,24 +32,29 @@ html, body {
    Anime backgrounds (webp)
    ========= */
 .bg-login {
-  background-image: url('/images/bg-anime-login.webp');   /* << changed */
+  background-image: url('/images/bg-anime-login.webp');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 }
 .bg-import {
-  background-image: url('/images/bg-anime-import.webp');  /* << changed */
+  background-image: url('/images/bg-anime-import.webp');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 }
 
-/* Vignette for readability */
+/* Vignette for readability on busy art */
 .anime-overlay { position: relative; }
 .anime-overlay::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(120% 90% at 50% 10%,
-    rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.35) 45%, rgba(0,0,0,0.65) 100%);
+  content: "";
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(
+    120% 90% at 50% 10%,
+    rgba(0,0,0,0.15) 0%,
+    rgba(0,0,0,0.35) 45%,
+    rgba(0,0,0,0.65) 100%
+  );
 }
 .anime-overlay > * { position: relative; z-index: 1; }
 
@@ -56,18 +62,93 @@ html, body {
    Coach sticker / avatar
    ========= */
 .coach-sticker {
-  position: absolute; right: 1rem; bottom: 1rem;
-  width: clamp(84px, 26vw, 160px); aspect-ratio: 1/1;
-  background-image: url('/images/coach-sticker.webp');    /* << changed */
-  background-size: contain; background-position: center; background-repeat: no-repeat;
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  width: clamp(84px, 26vw, 160px);
+  aspect-ratio: 1/1;
+  background-image: url('/images/coach-sticker.webp'); /* decorative sticker */
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
   filter: drop-shadow(0 6px 14px rgba(0,0,0,0.45));
-  animation: floaty 5.5s ease-in-out infinite; pointer-events: none;
+  animation: floaty 5.5s ease-in-out infinite;
+  pointer-events: none;
 }
-@keyframes floaty { 0%{transform:translateY(0)} 50%{transform:translateY(-6px)} 100%{transform:translateY(0)} }
+@keyframes floaty {
+  0%   { transform: translateY(0) }
+  50%  { transform: translateY(-6px) }
+  100% { transform: translateY(0) }
+}
 
-/* “Glass” cards */
-.glass{ backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); background:rgba(10,10,10,0.55); border:1px solid rgba(255,255,255,0.06); border-radius:0.9rem; }
-.glass-strong{ backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); background:rgba(10,10,10,0.72); border:1px solid rgba(255,255,255,0.08); border-radius:1rem; }
+/* =========
+   “Glass” cards (nice over art)
+   ========= */
+.glass {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background: rgba(10,10,10,0.55);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 0.9rem;
+}
+.glass-strong {
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  background: rgba(10,10,10,0.72);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 1rem;
+}
 
-/* Buttons */
-.btn{ @apply inline-flex i
+/* =========
+   Buttons (Tailwind still works — these are handy defaults)
+   ========= */
+.btn {
+  @apply inline-flex items-center justify-center px-3 py-2 rounded-xl text-sm border transition;
+  background: #181818;
+  border-color: var(--border);
+}
+.btn:hover { background: #1f1f1f; }
+
+.btn-primary {
+  background: #ffffff;
+  color: #111;
+  border-color: #ffffff;
+}
+.btn-primary:hover { filter: brightness(0.96); }
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--border);
+}
+
+/* Small pill label */
+.pill {
+  @apply inline-flex items-center px-2 py-1 rounded-lg text-xs;
+  background: #1a1a1a;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+/* Inputs */
+.input {
+  @apply w-full px-3 py-2 rounded-lg text-sm;
+  background: #141414;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.input::placeholder { color: #7a7a7a; }
+
+/* Scrollbar (desktop polish) */
+* { scrollbar-width: thin; scrollbar-color: #3a3a3a transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 999px; }
+
+/* =========
+   Safe padding for mobile notches
+   ========= */
+.safe-px {
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+}
+.safe-pt { padding-top: max(1rem, env(safe-area-inset-top)); }
+.safe-pb { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }

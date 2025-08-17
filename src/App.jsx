@@ -1,7 +1,6 @@
 // src/App.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { initFirebaseApp } from "./firebase";
-
 import {
   getAuth,
   onAuthStateChanged,
@@ -11,280 +10,298 @@ import {
   signOut as fbSignOut,
 } from "firebase/auth";
 
-import ImporterAI from "./components/ImporterAI.jsx";
-import Templates from "./components/Templates.jsx";
-import CoachChat from "./components/CoachChat.jsx";
+import ImporterAI from "./components/ImporterAI";
+import CoachChat from "./components/CoachChat";
 
-/* --------------- small helpers --------------- */
-
-function useLocalState(key, initial) {
-  const [v, setV] = useState(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : initial;
-    } catch {
-      return initial;
-    }
+// tiny fetch helper for local /api endpoints
+async function postJSON(url, body) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
   });
-  useEffect(() => {
-    try { localStorage.setItem(key, JSON.stringify(v)); } catch {}
-  }, [key, v]);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// Templates: quick, science-based splits
+const BUILT_IN_TEMPLATES = [
+  {
+    id: "ul-full",
+    name: "Upper/Lower (4-day)",
+    days: [
+      { name: "Upper A", exercises: [
+        { name:"Incline DB Press", sets:3, low:6, high:10, equip:"dumbbell", cat:"compound", group:"push" },
+        { name:"Chest-Supported Row", sets:3, low:8, high:12, equip:"machine", cat:"compound", group:"pull" },
+        { name:"Seated DB Shoulder Press", sets:3, low:6, high:10, equip:"dumbbell", cat:"compound", group:"push" },
+        { name:"Lat Pulldown", sets:3, low:8, high:12, equip:"cable", cat:"compound", group:"pull" },
+        { name:"Cable Lateral Raise", sets:3, low:12, high:20, equip:"cable", cat:"isolation", group:"push" },
+        { name:"EZ-Bar Curl", sets:2, low:8, high:12, equip:"barbell", cat:"isolation", group:"pull" },
+        { name:"Cable Triceps Pressdown", sets:2, low:10, high:15, equip:"cable", cat:"isolation", group:"push" },
+      ]},
+      { name: "Lower A", exercises: [
+        { name:"Back Squat", sets:3, low:4, high:8, equip:"barbell", cat:"compound", group:"legs" },
+        { name:"Romanian Deadlift", sets:3, low:6, high:10, equip:"barbell", cat:"compound", group:"legs" },
+        { name:"Leg Press", sets:3, low:10, high:15, equip:"machine", cat:"compound", group:"legs" },
+        { name:"Seated Leg Curl", sets:3, low:10, high:15, equip:"machine", cat:"isolation", group:"legs" },
+        { name:"Standing Calf Raise", sets:3, low:8, high:12, equip:"machine", cat:"isolation", group:"legs" },
+      ]},
+      { name: "Upper B", exercises: [
+        { name:"Flat Barbell Bench", sets:3, low:4, high:8, equip:"barbell", cat:"compound", group:"push" },
+        { name:"1-Arm Cable Row", sets:3, low:8, high:12, equip:"cable", cat:"compound", group:"pull" },
+        { name:"Machine Shoulder Press", sets:3, low:8, high:12, equip:"machine", cat:"compound", group:"push" },
+        { name:"Neutral-Grip Pulldown", sets:3, low:8, high:12, equip:"cable", cat:"compound", group:"pull" },
+        { name:"Reverse Pec-Deck", sets:3, low:12, high:20, equip:"machine", cat:"isolation", group:"pull" },
+        { name:"Incline DB Curl", sets:2, low:8, high:12, equip:"dumbbell", cat:"isolation", group:"pull" },
+        { name:"Overhead Cable Extension", sets:2, low:10, high:15, equip:"cable", cat:"isolation", group:"push" },
+      ]},
+      { name: "Lower B", exercises: [
+        { name:"Front Squat", sets:3, low:4, high:8, equip:"barbell", cat:"compound", group:"legs" },
+        { name:"Hip Thrust", sets:3, low:6, high:10, equip:"barbell", cat:"compound", group:"legs" },
+        { name:"Leg Extension", sets:3, low:12, high:15, equip:"machine", cat:"isolation", group:"legs" },
+        { name:"Lying Leg Curl", sets:3, low:10, high:15, equip:"machine", cat:"isolation", group:"legs" },
+        { name:"Seated Calf Raise", sets:3, low:10, high:15, equip:"machine", cat:"isolation", group:"legs" },
+      ]},
+    ]
+  },
+  {
+    id: "push-pull-legs",
+    name: "PPL (6-day)",
+    days: [
+      { name:"Push A", exercises:[
+        { name:"Incline DB Press", sets:3, low:6, high:10, equip:"dumbbell", cat:"compound", group:"push" },
+        { name:"Machine Shoulder Press", sets:3, low:8, high:12, equip:"machine", cat:"compound", group:"push" },
+        { name:"Cable Flye (high-to-low)", sets:3, low:12, high:20, equip:"cable", cat:"isolation", group:"push" },
+        { name:"Lateral Raise", sets:3, low:12, high:20, equip:"dumbbell", cat:"isolation", group:"push" },
+        { name:"Triceps Pressdown", sets:3, low:10, high:15, equip:"cable", cat:"isolation", group:"push" },
+      ]},
+      { name:"Pull A", exercises:[
+        { name:"Weighted Pull-up", sets:3, low:4, high:8, equip:"bodyweight", cat:"compound", group:"pull" },
+        { name:"Chest-Supported Row", sets:3, low:8, high:12, equip:"machine", cat:"compound", group:"pull" },
+        { name:"Pullover Machine", sets:3, low:10, high:15, equip:"machine", cat:"isolation", group:"pull" },
+        { name:"Reverse Pec-Deck", sets:3, low:12, high:20, equip:"machine", cat:"isolation", group:"pull" },
+        { name:"Incline DB Curl", sets:3, low:8, high:12, equip:"dumbbell", cat:"isolation", group:"pull" },
+      ]},
+      { name:"Legs A", exercises:[
+        { name:"Back Squat", sets:3, low:4, high:8, equip:"barbell", cat:"compound", group:"legs" },
+        { name:"Romanian Deadlift", sets:3, low:6, high:10, equip:"barbell", cat:"compound", group:"legs" },
+        { name:"Leg Press", sets:3, low:10, high:15, equip:"machine", cat:"compound", group:"legs" },
+        { name:"Leg Curl (seated)", sets:3, low:10, high:15, equip:"machine", cat:"isolation", group:"legs" },
+        { name:"Standing Calf Raise", sets:3, low:8, high:12, equip:"machine", cat:"isolation", group:"legs" },
+      ]},
+      // repeat B variants to make 6-day
+      { name:"Push B", exercises:[
+        { name:"Flat Barbell Bench", sets:3, low:4, high:8, equip:"barbell", cat:"compound", group:"push" },
+        { name:"Seated DB Shoulder Press", sets:3, low:6, high:10, equip:"dumbbell", cat:"compound", group:"push" },
+        { name:"Cable Flye (mid)", sets:3, low:12, high:20, equip:"cable", cat:"isolation", group:"push" },
+        { name:"Cable Lateral Raise", sets:3, low:12, high:20, equip:"cable", cat:"isolation", group:"push" },
+        { name:"Overhead Cable Extension", sets:3, low:10, high:15, equip:"cable", cat:"isolation", group:"push" },
+      ]},
+      { name:"Pull B", exercises:[
+        { name:"Lat Pulldown (neutral)", sets:3, low:8, high:12, equip:"cable", cat:"compound", group:"pull" },
+        { name:"1-Arm Cable Row", sets:3, low:8, high:12, equip:"cable", cat:"compound", group:"pull" },
+        { name:"Pullover Machine", sets:3, low:10, high:15, equip:"machine", cat:"isolation", group:"pull" },
+        { name:"Reverse Pec-Deck", sets:3, low:12, high:20, equip:"machine", cat:"isolation", group:"pull" },
+        { name:"EZ-Bar Curl", sets:3, low:8, high:12, equip:"barbell", cat:"isolation", group:"pull" },
+      ]},
+      { name:"Legs B", exercises:[
+        { name:"Front Squat", sets:3, low:4, high:8, equip:"barbell", cat:"compound", group:"legs" },
+        { name:"Hip Thrust", sets:3, low:6, high:10, equip:"barbell", cat:"compound", group:"legs" },
+        { name:"Leg Extension", sets:3, low:12, high:15, equip:"machine", cat:"isolation", group:"legs" },
+        { name:"Lying Leg Curl", sets:3, low:10, high:15, equip:"machine", cat:"isolation", group:"legs" },
+        { name:"Seated Calf Raise", sets:3, low:10, high:15, equip:"machine", cat:"isolation", group:"legs" },
+      ]},
+    ]
+  }
+];
+
+function useLocalState(key, init) {
+  const [v, setV] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(key)) ?? init; }
+    catch { return init; }
+  });
+  useEffect(() => { localStorage.setItem(key, JSON.stringify(v)); }, [key, v]);
   return [v, setV];
 }
 
-function clsx(...xs) { return xs.filter(Boolean).join(" "); }
-
-/* --------------- App --------------- */
-
 export default function App() {
-  // Firebase (optional but enabled)
+  // Firebase auth init
   const app = useMemo(() => initFirebaseApp(), []);
   const auth = useMemo(() => getAuth(app), [app]);
 
   const [user, setUser] = useState(null);
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [verified, setVerified] = useState(false);
 
-  const [tab, setTab] = useLocalState("sf.tab", "Log");
+  const [tab, setTab] = useLocalState("sf.tab", "split");
   const [units, setUnits] = useLocalState("sf.units", "lb");
   const [split, setSplit] = useLocalState("sf.split", null);
+  const [importing, setImporting] = useState(false);
 
-  useEffect(() => {
-    const off = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setCheckingAuth(false);
-    });
-    return () => off();
-  }, [auth]);
+  useEffect(() => onAuthStateChanged(auth, u => {
+    setUser(u);
+    setVerified(!!u?.emailVerified);
+  }), [auth]);
 
-  function saveSplit(s) {
-    setSplit(s);
-    try { localStorage.setItem("sf.split", JSON.stringify(s)); } catch {}
-  }
+  function signOut() { fbSignOut(auth); }
 
-  /* ---------- Auth screens ---------- */
-
-  if (checkingAuth) {
-    return (
-      <div className="fullscreen flex items-center justify-center">
-        <div className="pill">Loading…</div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <AuthScreen onDone={() => {}} />;
-  }
-
-  if (user && !user.emailVerified) {
-    return <VerifyScreen user={user} onSignOut={() => fbSignOut(auth)} />;
-  }
-
-  /* ---------- Main app ---------- */
+  // ------------- UI -------------
+  if (!user || !verified) return <AuthScreen onAuthed={() => { /* noop */ }} />;
 
   return (
-    <div className="min-h-screen safe-pt safe-px pb-8">
-      {/* Top bar */}
+    <div className="min-h-screen safe-px safe-pt safe-pb">
       <header className="flex items-center justify-between mb-4">
-        <div className="text-lg font-semibold">SetForge</div>
-
+        <h1 className="font-semibold">SetForge</h1>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1">
-            <button
-              className={clsx("pill", units === "lb" && "bg-white text-black border-white")}
-              onClick={() => setUnits("lb")}
-            >
-              lb
-            </button>
-            <button
-              className={clsx("pill", units === "kg" && "bg-white text-black border-white")}
-              onClick={() => setUnits("kg")}
-            >
-              kg
-            </button>
-          </div>
-          <button className="btn" onClick={() => fbSignOut(auth)}>
-            Sign out
-          </button>
+          <button
+            className={`pill cursor-pointer ${units==='lb' ? 'bg-white text-black border-white' : ''}`}
+            onClick={()=>setUnits('lb')}
+          >lb</button>
+          <button
+            className={`pill cursor-pointer ${units==='kg' ? 'bg-white text-black border-white' : ''}`}
+            onClick={()=>setUnits('kg')}
+          >kg</button>
+          <button className="btn" onClick={signOut}>Sign out</button>
         </div>
       </header>
 
-      {/* Nav tabs */}
       <nav className="flex gap-2 mb-4">
-        {["Log", "Split", "Templates", "Sessions", "Coach"].map((t) => (
-          <button
-            key={t}
-            className={clsx("pill", tab === t && "bg-white text-black border-white")}
-            onClick={() => setTab(t)}
-          >
-            {t}
+        {["log","split","templates","sessions","coach"].map(t => (
+          <button key={t} className={`pill cursor-pointer ${tab===t ? 'bg-white text-black border-white' : ''}`} onClick={()=>setTab(t)}>
+            {t[0].toUpperCase()+t.slice(1)}
           </button>
         ))}
       </nav>
 
-      {/* Views */}
-      {tab === "Log" && (
-        <LogView
-          split={split}
-          onGoSplit={() => setTab("Split")}
-          onGoTemplates={() => setTab("Templates")}
-        />
+      {tab === "log" && (
+        <section>
+          <h2 className="font-semibold mb-2">Log</h2>
+          {!split ? (
+            <p className="text-neutral-400">Import a split first, then you can log your session here.</p>
+          ) : (
+            <p className="text-neutral-400">Logging UI coming up next.</p>
+          )}
+        </section>
       )}
 
-      {tab === "Split" && (
-        <ImporterAI
-          onConfirm={(newSplit) => {
-            saveSplit(newSplit);
-            setTab("Log");
-          }}
-          onCancel={() => setTab("Log")}
-        />
+      {tab === "split" && (
+        <section>
+          <h2 className="font-semibold mb-2">Split</h2>
+          {!split && !importing && (
+            <>
+              <p className="text-neutral-400 mb-2">Import your program and we’ll structure the days & exercises for you.</p>
+              <button className="btn" onClick={() => setImporting(true)}>+ Import split (AI)</button>
+            </>
+          )}
+          {importing && (
+            <ImporterAI
+              onCancel={() => setImporting(false)}
+              onConfirm={(s) => { setSplit(s); setImporting(false); }}
+            />
+          )}
+          {split && !importing && (
+            <div className="grid gap-3">
+              <div className="flex items-center justify-between">
+                <div className="text-neutral-400">{split.name}</div>
+                <button className="btn" onClick={() => setImporting(true)}>Re-import / Edit</button>
+              </div>
+              {split.days.map((d, i) => (
+                <div key={i} className="rounded-xl border border-neutral-800 p-3">
+                  <div className="font-medium mb-2">{d.name}</div>
+                  <ul className="text-sm text-neutral-300 list-disc pl-5">
+                    {d.exercises.map((e, j) => (
+                      <li key={j}>{e.name} — {e.sets} × {e.low}–{e.high}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
-      {tab === "Templates" && (
-        <Templates
-          onUse={(tmpl) => {
-            saveSplit(tmpl);
-            setTab("Log");
-          }}
-        />
+      {tab === "templates" && (
+        <section>
+          <h2 className="font-semibold mb-2">Templates</h2>
+          <p className="text-neutral-400 mb-3">Science-based starting points for hypertrophy. Customize after loading.</p>
+          <div className="grid gap-3">
+            {BUILT_IN_TEMPLATES.map(t => (
+              <div key={t.id} className="rounded-xl border border-neutral-800 p-3">
+                <div className="flex items-center justify-between">
+                  <div className="font-medium">{t.name}</div>
+                  <button className="btn-primary" onClick={() => setSplit({ name: t.name, days: t.days })}>Use this</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
-      {tab === "Sessions" && <SessionsView />}
+      {tab === "sessions" && (
+        <section>
+          <h2 className="font-semibold mb-2">Sessions</h2>
+          <p className="text-neutral-400">History list will appear here.</p>
+        </section>
+      )}
 
-      {tab === "Coach" && <CoachChat units={units} />}
+      {tab === "coach" && (
+        <CoachChat units={units} day={""} />
+      )}
     </div>
   );
 }
 
-/* --------------- Screens --------------- */
+/* ------------------------------ Auth Screen ------------------------------ */
 
 function AuthScreen() {
   const app = useMemo(() => initFirebaseApp(), []);
   const auth = useMemo(() => getAuth(app), [app]);
 
   const [email, setEmail] = useState("");
-  const [pw, setPw] = useState("");
-  const [mode, setMode] = useState("login"); // login | signup
-  const [msg, setMsg] = useState("");
+  const [pass, setPass] = useState("");
+  const [mode, setMode] = useState("signin"); // signin | signup | verify
+  const [pending, setPending] = useState(false);
 
-  async function login() {
-    setMsg("");
+  async function submit(e) {
+    e?.preventDefault?.();
     try {
-      await signInWithEmailAndPassword(auth, email, pw);
+      setPending(true);
+      if (mode === "signin") {
+        await signInWithEmailAndPassword(auth, email, pass);
+      } else if (mode === "signup") {
+        const { user } = await createUserWithEmailAndPassword(auth, email, pass);
+        await sendEmailVerification(user);
+        setMode("verify");
+      }
     } catch (e) {
-      setMsg(e.message || "Could not sign in.");
+      alert(e.message || "Auth error");
+    } finally {
+      setPending(false);
     }
   }
 
-  async function signup() {
-    setMsg("");
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, email, pw);
-      try { await sendEmailVerification(cred.user); } catch {}
-      setMsg("Account created. Check your inbox to verify before using the app.");
-    } catch (e) {
-      setMsg(e.message || "Could not create account.");
-    }
-  }
-
   return (
-    <section className="fullscreen anime-overlay bg-login relative flex items-center justify-center safe-px">
-      <div className="max-w-sm w-full glass-strong p-4">
-        <h1 className="text-xl font-semibold">Welcome to SetForge</h1>
-        <p className="text-sm text-neutral-400">
-          Log your training offline-first. Create an account and verify to use the app.
-        </p>
-
-        <div className="mt-3 grid gap-2">
-          <input className="input" placeholder="Email" value={email} onChange={(e)=>setEmail(e.target.value)} />
-          <input className="input" placeholder="Password" type="password" value={pw} onChange={(e)=>setPw(e.target.value)} />
-        </div>
-
-        <div className="mt-3 flex items-center gap-2">
-          {mode === "login" ? (
-            <>
-              <button className="btn-primary" onClick={login}>Log in</button>
-              <button className="btn" onClick={() => setMode("signup")}>Create account</button>
-            </>
-          ) : (
-            <>
-              <button className="btn-primary" onClick={signup}>Create account</button>
-              <button className="btn" onClick={() => setMode("login")}>Back to log in</button>
-            </>
-          )}
-        </div>
-
-        {!!msg && <div className="mt-3 text-sm text-neutral-300">{msg}</div>}
-      </div>
-
-      {/* Decorative coach sticker, bottom-right */}
-      <div className="coach-sticker" aria-hidden />
-    </section>
-  );
-}
-
-function VerifyScreen({ user, onSignOut }) {
-  const [sent, setSent] = useState(false);
-
-  async function resend() {
-    try { await sendEmailVerification(user); setSent(true); } catch {}
-  }
-
-  return (
-    <section className="fullscreen anime-overlay bg-login relative flex items-center justify-center safe-px">
-      <div className="max-w-sm w-full glass-strong p-4">
-        <h2 className="text-lg font-semibold">Verify your email</h2>
-        <p className="text-sm text-neutral-300">
-          We’ve sent a verification link to <strong>{user.email}</strong>.
-          Open it, then reload this page.
-        </p>
-        <div className="mt-3 flex items-center gap-2">
-          <button className="btn-primary" onClick={resend}>
-            {sent ? "Sent ✓" : "Resend email"}
-          </button>
-          <button className="btn" onClick={onSignOut}>Sign out</button>
-        </div>
-      </div>
-      <div className="coach-sticker" aria-hidden />
-    </section>
-  );
-}
-
-function LogView({ split, onGoSplit, onGoTemplates }) {
-  const hasSplit = !!split?.days?.length;
-
-  return (
-    <section className={clsx("relative", !hasSplit && "fullscreen anime-overlay bg-login flex items-center justify-center")}>
-      {!hasSplit ? (
-        <>
-          <div className="text-center space-y-3">
-            <h2 className="text-xl font-semibold">Import a split to start logging</h2>
-            <p className="text-neutral-400 text-sm">
-              Paste or upload on the Split tab, or choose a science-based template.
-            </p>
-            <div className="flex gap-2 justify-center">
-              <button className="btn-primary" onClick={onGoSplit}>Import</button>
-              <button className="btn" onClick={onGoTemplates}>Browse templates</button>
+    <div className="fullscreen anime-overlay bg-login flex items-center justify-center p-4">
+      <form onSubmit={submit} className="glass-strong max-w-sm w-full p-4">
+        <h1 className="font-semibold text-lg mb-2 text-center">SetForge</h1>
+        {mode !== "verify" ? (
+          <>
+            <input className="input mb-2" type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
+            <input className="input mb-2" type="password" placeholder="Password" value={pass} onChange={e=>setPass(e.target.value)} />
+            <button className="btn-primary w-full" disabled={pending}>{pending ? "…" : (mode==="signin"?"Sign in":"Create account")}</button>
+            <div className="text-xs text-neutral-400 mt-2 text-center">
+              {mode==="signin" ? <>No account? <button type="button" className="underline" onClick={()=>setMode("signup")}>Sign up</button></> :
+               <>Already have an account? <button type="button" className="underline" onClick={()=>setMode("signin")}>Sign in</button></>}
             </div>
+          </>
+        ) : (
+          <div className="text-sm text-neutral-300 text-center">
+            Check your email and verify your account. Then refresh this page.
           </div>
-          <div className="coach-sticker" aria-hidden />
-        </>
-      ) : (
-        <div className="glass p-4 rounded-2xl border border-neutral-800">
-          <h3 className="font-semibold">Log</h3>
-          <p className="text-sm text-neutral-400">Logging UI will use your imported split. (WIP placeholder)</p>
-        </div>
-      )}
-    </section>
-  );
-}
+        )}
+      </form>
 
-function SessionsView() {
-  // simple placeholder for now
-  return (
-    <section className="glass p-4 rounded-2xl border border-neutral-800">
-      <h3 className="font-semibold">Sessions</h3>
-      <p className="text-sm text-neutral-400">Your recent sessions will appear here after logging.</p>
-    </section>
+      {/* login sticker bottom-right, never blocking */}
+      <div className="coach-sticker coach-sticker--login" aria-hidden="true" />
+    </div>
   );
 }

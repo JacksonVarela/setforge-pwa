@@ -109,27 +109,68 @@ export default function App() {
   }
 
   // ======= Auth screens =======
-  if (!user) return <AuthScreen
-    onLogin={async (email, pass) => {
-      setEmailErr("");
-      try {
-        await signInWithEmailAndPassword(auth, email, pass);
-      } catch (e) {
-        setEmailErr(e?.message || "Could not sign in");
-      }
-    }}
-    onSignup={async (email, pass) => {
-      setEmailErr("");
-      try {
-        const cred = await createUserWithEmailAndPassword(auth, email, pass);
-        await sendEmailVerification(cred.user);
-        alert("Verification email sent. Please verify, then sign in.");
-      } catch (e) {
-        setEmailErr(e?.message || "Could not sign up");
-      }
-    }}
-    
-  />;
+ function AuthScreen({ onLogin, onSignup }) {
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const [mode, setMode] = useState("login"); // login | signup
+
+  return (
+    <div className="page page-login bg-login anime-overlay flex items-center justify-center">
+      <div className="coach-sticker" />
+      <div className="glass-strong w-full max-w-md mx-auto p-5">
+        <h1 className="text-2xl font-extrabold text-center">SetForge</h1>
+        <p className="text-sm text-neutral-400 text-center">
+          Sign {mode === "login" ? "in" : "up"} to get started
+        </p>
+
+        <div className="mt-4 grid gap-2">
+          <input
+            className="input"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder="Password"
+            type="password"
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+          />
+
+          <div className="flex items-center justify-end">
+            {mode === "login" ? (
+              <button
+                className="btn-primary px-4 py-2 rounded-xl"
+                onClick={() => onLogin(email, pass)}
+              >
+                Sign in
+              </button>
+            ) : (
+              <button
+                className="btn-primary px-4 py-2 rounded-xl"
+                onClick={() => onSignup(email, pass)}
+              >
+                Create account
+              </button>
+            )}
+          </div>
+
+          <div className="text-xs text-neutral-400 text-center">
+            Email verification required. We use Firebase Auth free tier.
+          </div>
+
+          <button
+            className="btn mt-1"
+            onClick={() => setMode(mode === "login" ? "signup" : "login")}
+          >
+            {mode === "login" ? "No account? Sign up" : "Have an account? Sign in"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
   // ======= App nav + pages =======
   return (

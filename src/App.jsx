@@ -128,8 +128,7 @@ export default function App() {
         setEmailErr(e?.message || "Could not sign up");
       }
     }}
-    units={units}
-    setUnits={setUnits}
+    
   />;
 
   // ======= App nav + pages =======

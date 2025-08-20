@@ -21,6 +21,22 @@ export default function CoachChat({ units = "lb", day = "" }) {
   const [typing, setTyping] = useState(false);
   const endRef = useRef(null);
 
+  // If an old build saved the placeholder text, reset the chat once.
+  useEffect(() => {
+    const bad = messages.some(m =>
+      typeof m?.content === "string" &&
+      m.content.toLowerCase().includes("endpoint") &&
+      m.content.toLowerCase().includes("configured")
+    );
+    if (bad) {
+      const fresh = [
+        { role: "assistant", content: `Yo! I'm ${BOT_NAME}. Ask me about hypertrophy programming, diet, or how to use any screen.` }
+      ];
+      setMessages(fresh);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once
+
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, typing]);
 
   async function send() {
@@ -32,17 +48,20 @@ export default function CoachChat({ units = "lb", day = "" }) {
     setTyping(true);
 
     try {
+      // THIS CALLS /api/coach-chat – make sure the serverless file below exists
       const reply = await coachChatSend(next, { units, day });
       setMessages(m => [...m, { role: "assistant", content: reply || "…" }]);
     } catch (e) {
-      setMessages(m => [...m, { role: "assistant", content: "Hmm, I couldn’t reach my endpoint. Double-check /api/coach-chat and your OPENAI_API_KEY in Vercel Project → Settings → Environment Variables." }]);
+      setMessages(m => [...m, { role: "assistant", content: "I couldn’t reach my endpoint. Ensure /api/coach-chat exists and OPENAI_API_KEY is set in Vercel project env." }]);
     } finally {
       setTyping(false);
     }
   }
 
-  function quick(q) {
-    setInput(q);
+  function quick(q) { setInput(q); }
+  function resetChat() {
+    const fresh = [{ role: "assistant", content: `Yo! I'm ${BOT_NAME}. Ask me anything training or SetForge related.` }];
+    setMessages(fresh);
   }
 
   return (
@@ -53,6 +72,7 @@ export default function CoachChat({ units = "lb", day = "" }) {
           <div className="font-semibold">{BOT_NAME}</div>
           <div className="text-xs text-neutral-400">Online</div>
         </div>
+        <button className="ml-auto text-xs underline text-neutral-400" onClick={resetChat}>Reset chat</button>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-3">
@@ -95,7 +115,7 @@ export default function CoachChat({ units = "lb", day = "" }) {
         <button className="btn-primary" onClick={send}>Send</button>
       </div>
 
-      {/* coach sticker – fixed, never blocks inputs */}
+      {/* Coach sticker sits above the input, out of the way */}
       <div className="coach-sticker coach-sticker--chat" aria-hidden="true" />
       <div className="text-[11px] text-neutral-500 mt-2">
         Evidence-based hypertrophy focus. This chat can also guide you through SetForge (“how to move an exercise”, etc).

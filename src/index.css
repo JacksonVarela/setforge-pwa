@@ -1,20 +1,191 @@
-/* --- Coach sticker (login + chat) --- */
+/* Tailwind base */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========
+   Base theme (forced dark)
+   ========= */
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0a;      /* page background */
+  --bg-2: #111213;    /* panels */
+  --text: #f5f5f5;    /* primary text */
+  --muted: #a3a3a3;   /* secondary text */
+  --accent: #ef4444;  /* red-500 */
+  --card: #121212;
+  --border: #2a2a2a;
+}
+
+/* Make sure the page NEVER goes white */
+html, body, #root { height: 100%; }
+html, body {
+  background: var(--bg) !important;
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+/* Helpful utility to make a full-height section */
+.fullscreen { min-height: 100svh; }
+
+/* =========
+   Anime backgrounds (webp)
+   Apply these to a top-level wrapper on the relevant screens
+   ========= */
+.bg-login {
+  background-image: url('/images/bg-anime-login.webp');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.bg-import {
+  background-image: url('/images/bg-anime-import.webp');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* Subtle dark vignette overlay for readability over busy art */
+.anime-overlay { position: relative; }
+.anime-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    120% 90% at 50% 10%,
+    rgba(0,0,0,0.15) 0%,
+    rgba(0,0,0,0.35) 45%,
+    rgba(0,0,0,0.65) 100%
+  );
+}
+/* Put your content above the overlay */
+.anime-overlay > * { position: relative; z-index: 1; }
+
+/* =========
+   Coach sticker / avatar
+   - bottom-right, never blocks inputs
+   ========= */
 .coach-sticker {
-  position: fixed !important;     /* <— force fixed, overrides any old absolute rule */
+  position: fixed !important;            /* force fixed, wins over any older rule */
   right: 16px !important;
   bottom: 16px !important;
   width: clamp(96px, 24vw, 150px);
-  aspect-ratio: 1/1;
-  background-image: url('/images/coach-sticker.webp');
+  aspect-ratio: 1 / 1;
+  background-image: url('/images/coach-sticker.webp'); /* use .webp assets */
   background-size: contain;
   background-position: center;
   background-repeat: no-repeat;
   filter: drop-shadow(0 6px 14px rgba(0,0,0,0.45));
   animation: floaty 5.5s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 100;                   /* above overlays */
+  pointer-events: none;                  /* purely decorative */
+  z-index: 100;                          /* above content, below modals/toasts */
 }
-
-/* chat page variant sits higher so it never covers the input */
+/* Chat page variant sits a bit higher so it never covers the input */
 .coach-sticker--chat { bottom: 84px !important; opacity: 0.9; }
 .coach-sticker--login { bottom: 16px !important; }
+
+@keyframes floaty {
+  0%   { transform: translateY(0px); }
+  50%  { transform: translateY(-6px); }
+  100% { transform: translateY(0px); }
+}
+
+/* =========
+   “Glass” card helpers (nice over art)
+   ========= */
+.glass {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background: rgba(10,10,10,0.55);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 0.9rem;
+}
+.glass-strong {
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  background: rgba(10,10,10,0.72);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 1rem;
+}
+
+/* =========
+   Buttons (helpers; Tailwind still works)
+   ========= */
+.btn {
+  @apply inline-flex items-center justify-center px-3 py-2 rounded-xl text-sm border transition;
+  background: #181818;
+  border-color: var(--border);
+  color: var(--text);
+}
+.btn:hover { background: #1f1f1f; }
+
+.btn-primary {
+  background: #ffffff;
+  color: #111;
+  border-color: #ffffff;
+}
+.btn-primary:hover { filter: brightness(0.96); }
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--border);
+}
+
+/* Small pill label */
+.pill {
+  @apply inline-flex items-center px-2 py-1 rounded-lg text-xs;
+  background: #1a1a1a;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Inputs (helpers; Tailwind still works) */
+.input {
+  @apply w-full px-3 py-2 rounded-lg text-sm;
+  background: #141414;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.input::placeholder { color: #7a7a7a; }
+
+/* =========
+   Chat "thinking" bubbles
+   ========= */
+.typing {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--muted);
+  opacity: 0.7;
+  animation: typing-bounce 1.2s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) { animation-delay: .15s; }
+.typing-dot:nth-child(3) { animation-delay: .3s; }
+
+@keyframes typing-bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-4px); }
+}
+
+/* Scrollbar (desktop polish) */
+* { scrollbar-width: thin; scrollbar-color: #3a3a3a transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 999px; }
+
+/* =========
+   Safe padding for mobile notches
+   ========= */
+.safe-px {
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+}
+.safe-pt { padding-top: max(1rem, env(safe-area-inset-top)); }
+.safe-pb { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }

@@ -1,66 +1,8 @@
-/* src/index.css */
-
-/* Tailwind base */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* =========
-   Base theme
-   ========= */
-:root {
-  color-scheme: dark;
-  --bg: #0a0a0a;
-  --bg-2: #111213;
-  --text: #f5f5f5;
-  --muted: #a3a3a3;
-  --accent: #ef4444;
-  --card: #121212;
-  --border: #2a2a2a;
-}
-
-html, body, #root { height: 100%; }
-html, body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-}
-.fullscreen { min-height: 100svh; }
-
-/* =========
-   Backgrounds (webp)
-   ========= */
-.bg-login {
-  background-image: url('/images/bg-anime-login.webp');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-}
-.bg-import {
-  background-image: url('/images/bg-anime-import.webp');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-}
-
-/* Vignette overlay for readability */
-.anime-overlay { position: relative; }
-.anime-overlay::after {
-  content: "";
-  position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(120% 90% at 50% 10%,
-    rgba(0,0,0,0.15) 0%,
-    rgba(0,0,0,0.35) 45%,
-    rgba(0,0,0,0.65) 100%);
-}
-.anime-overlay > * { position: relative; z-index: 1; }
-
-/* =========
-   Coach sticker (never blocks inputs)
-   ========= */
+/* --- Coach sticker (login + chat) --- */
 .coach-sticker {
-  position: fixed;
-  right: 12px; bottom: 12px;
+  position: fixed !important;     /* <— force fixed, overrides any old absolute rule */
+  right: 16px !important;
+  bottom: 16px !important;
   width: clamp(96px, 24vw, 150px);
   aspect-ratio: 1/1;
   background-image: url('/images/coach-sticker.webp');
@@ -70,67 +12,9 @@ html, body {
   filter: drop-shadow(0 6px 14px rgba(0,0,0,0.45));
   animation: floaty 5.5s ease-in-out infinite;
   pointer-events: none;
-  z-index: 5;
+  z-index: 100;                   /* above overlays */
 }
 
-/* chat page version sits a bit higher so it won't overlap the input */
-.coach-sticker--chat { bottom: 76px; opacity: 0.9; }
-.coach-sticker--login { bottom: 18px; }
-
-@keyframes floaty {
-  0% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
-  100% { transform: translateY(0); }
-}
-
-/* =========
-   Glass helpers
-   ========= */
-.glass {
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  background: rgba(10,10,10,0.55);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 0.9rem;
-}
-.glass-strong {
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  background: rgba(10,10,10,0.72);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 1rem;
-}
-
-/* =========
-   Buttons / Inputs
-   ========= */
-.btn { @apply inline-flex items-center justify-center px-3 py-2 rounded-xl text-sm border transition; background:#181818; border-color:var(--border); }
-.btn:hover { background:#1f1f1f; }
-.btn-primary { background:#fff; color:#111; border-color:#fff; }
-.btn-primary:hover { filter: brightness(0.96); }
-.btn-ghost { background:transparent; border-color:var(--border); }
-
-.pill { @apply inline-flex items-center px-2 py-1 rounded-lg text-xs; background:#1a1a1a; border:1px solid var(--border); color:var(--muted); }
-
-.input { @apply w-full px-3 py-2 rounded-lg text-sm; background:#141414; color:var(--text); border:1px solid var(--border); }
-.input::placeholder { color:#7a7a7a; }
-
-/* Scrollbar polish */
-* { scrollbar-width: thin; scrollbar-color: #3a3a3a transparent; }
-*::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 999px; }
-
-/* Safe-area padding */
-.safe-px { padding-left: max(0.75rem, env(safe-area-inset-left)); padding-right: max(0.75rem, env(safe-area-inset-right)); }
-.safe-pt { padding-top: max(1rem, env(safe-area-inset-top)); }
-.safe-pb { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
-
-/* =========
-   Typing indicator
-   ========= */
-.typing { display:inline-flex; gap:6px; align-items:center; }
-.typing-dot { width:6px; height:6px; border-radius:999px; background:#999; opacity:.25; animation: typingPulse 1.2s infinite ease-in-out; }
-.typing-dot:nth-child(2) { animation-delay:.2s; }
-.typing-dot:nth-child(3) { animation-delay:.4s; }
-@keyframes typingPulse {
-  0%, 80%, 100% { opacity:.25; transform: translateY(0); }
-  40% { opacity: 1; transform: translateY(-2px); }
-}
+/* chat page variant sits higher so it never covers the input */
+.coach-sticker--chat { bottom: 84px !important; opacity: 0.9; }
+.coach-sticker--login { bottom: 16px !important; }

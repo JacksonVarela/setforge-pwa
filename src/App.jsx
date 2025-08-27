@@ -26,7 +26,320 @@ function useLocalState(key, initial) {
 }
 
 // ---------- templates ----------
-const TEMPLATES = [ /* keep your templates unchanged (omitted here for brevity) */ ];
+const TEMPLATES = [
+  {
+    id: "ulr-cycle",
+    name: "Upper / Lower / Rest • repeat (2 on, 1 off)",
+    days: [
+      {
+        id: "ulr-u",
+        name: "Upper",
+        exercises: [
+          { name: "Bench Press",            sets: 4, low: 5,  high: 8,  equip: "barbell",  group: "push",  cat: "compound" },
+          { name: "Weighted Pull-up",       sets: 4, low: 5,  high: 8,  equip: "bodyweight", group: "pull", cat: "compound" },
+          { name: "Incline DB Press",       sets: 3, low: 8,  high: 12, equip: "dumbbell", group: "push",  cat: "compound" },
+          { name: "Chest-Supported Row",    sets: 3, low: 8,  high: 12, equip: "machine",  group: "pull",  cat: "compound" },
+          { name: "Lateral Raise",          sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push",  cat: "isolation" },
+          { name: "Cable Curl",             sets: 2, low: 10, high: 15, equip: "cable",    group: "pull",  cat: "isolation" },
+          { name: "Triceps Pushdown",       sets: 2, low: 10, high: 15, equip: "cable",    group: "push",  cat: "isolation" }
+        ]
+      },
+      {
+        id: "ulr-l",
+        name: "Lower",
+        exercises: [
+          { name: "Back Squat",             sets: 4, low: 5,  high: 8,  equip: "barbell",  group: "legs",  cat: "compound" },
+          { name: "Romanian Deadlift",      sets: 3, low: 6,  high: 10, equip: "barbell",  group: "legs",  cat: "compound" },
+          { name: "Leg Press",              sets: 3, low: 10, high: 15, equip: "machine",  group: "legs",  cat: "compound" },
+          { name: "Leg Curl",               sets: 3, low: 10, high: 15, equip: "machine",  group: "legs",  cat: "isolation" },
+          { name: "Standing Calf Raise",    sets: 3, low: 12, high: 20, equip: "machine",  group: "legs",  cat: "isolation" },
+          { name: "Hanging Leg Raise",      sets: 2, low: 10, high: 15, equip: "bodyweight", group: "core", cat: "isolation" }
+        ]
+      },
+      {
+        id: "ulr-r",
+        name: "Active Recovery",
+        exercises: [
+          { name: "Walking (easy pace, min)", sets: 1, low: 20, high: 40, equip: "bodyweight", group: "legs", cat: "isolation" },
+          { name: "Plank",                    sets: 2, low: 30, high: 60, equip: "bodyweight", group: "core", cat: "isolation" },
+          { name: "Side Plank",               sets: 2, low: 20, high: 40, equip: "bodyweight", group: "core", cat: "isolation" },
+          { name: "Hip Flexor Stretch",       sets: 2, low: 30, high: 45, equip: "bodyweight", group: "legs", cat: "isolation" }
+        ]
+      }
+    ]
+  },
+
+  {
+    id: "ul-4d",
+    name: "Upper / Lower • 4×/wk",
+    days: [
+      {
+        id: "u1",
+        name: "Upper 1",
+        exercises: [
+          { name: "Bench Press",            sets: 4, low: 5,  high: 8,  equip: "barbell",  group: "push", cat: "compound" },
+          { name: "Row (Machine)",          sets: 3, low: 8,  high: 12, equip: "machine",  group: "pull", cat: "compound" },
+          { name: "Overhead Press",         sets: 3, low: 6,  high: 10, equip: "barbell",  group: "push", cat: "compound" },
+          { name: "Lat Pulldown",           sets: 3, low: 10, high: 12, equip: "machine",  group: "pull", cat: "compound" },
+          { name: "Lateral Raise",          sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+          { name: "Cable Curl",             sets: 3, low: 10, high: 15, equip: "cable",    group: "pull", cat: "isolation" }
+        ]
+      },
+      {
+        id: "l1",
+        name: "Lower 1",
+        exercises: [
+          { name: "Back Squat",             sets: 4, low: 5,  high: 8,  equip: "barbell",  group: "legs", cat: "compound" },
+          { name: "Romanian Deadlift",      sets: 3, low: 6,  high: 10, equip: "barbell",  group: "legs", cat: "compound" },
+          { name: "Leg Press",              sets: 3, low: 10, high: 15, equip: "machine",  group: "legs", cat: "compound" },
+          { name: "Leg Curl",               sets: 3, low: 10, high: 15, equip: "machine",  group: "legs", cat: "isolation" },
+          { name: "Calf Raise",             sets: 3, low: 12, high: 20, equip: "machine",  group: "legs", cat: "isolation" }
+        ]
+      },
+      {
+        id: "u2",
+        name: "Upper 2",
+        exercises: [
+          { name: "Incline DB Press",       sets: 4, low: 8,  high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+          { name: "Chest Supported Row",    sets: 3, low: 8,  high: 12, equip: "machine",  group: "pull", cat: "compound" },
+          { name: "Seated OHP (Smith)",     sets: 3, low: 8,  high: 12, equip: "smith",    group: "push", cat: "compound" },
+          { name: "Pulldown (neutral)",     sets: 3, low: 10, high: 12, equip: "machine",  group: "pull", cat: "compound" },
+          { name: "Face Pull",              sets: 3, low: 12, high: 20, equip: "cable",    group: "pull", cat: "isolation" },
+          { name: "Triceps Pushdown",       sets: 3, low: 10, high: 15, equip: "cable",    group: "push", cat: "isolation" }
+        ]
+      },
+      {
+        id: "l2",
+        name: "Lower 2",
+        exercises: [
+          { name: "Front Squat",            sets: 3, low: 5,  high: 8,  equip: "barbell",  group: "legs", cat: "compound" },
+          { name: "Hip Thrust",             sets: 3, low: 8,  high: 12, equip: "barbell",  group: "legs", cat: "compound" },
+          { name: "Leg Extension",          sets: 3, low: 12, high: 15, equip: "machine",  group: "legs", cat: "isolation" },
+          { name: "Seated Calf Raise",      sets: 3, low: 12, high: 20, equip: "machine",  group: "legs", cat: "isolation" },
+          { name: "Cable Crunch",           sets: 3, low: 10, high: 15, equip: "cable",    group: "core", cat: "isolation" }
+        ]
+      }
+    ]
+  },
+
+  {
+    id: "ppl-6d",
+    name: "PPL • 6×/wk",
+    days: [
+      {
+        id: "p1",
+        name: "Push A",
+        exercises: [
+          { name: "Bench Press",            sets: 3, low: 5,  high: 8,  equip: "barbell",  group: "push", cat: "compound" },
+          { name: "Incline DB Press",       sets: 3, low: 8,  high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+          { name: "Overhead Press",         sets: 2, low: 6,  high: 10, equip: "barbell",  group: "push", cat: "compound" },
+          { name: "Lateral Raise",          sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" }
+        ]
+      },
+      {
+        id: "p2",
+        name: "Pull A",
+        exercises: [
+          { name: "Weighted Pull-ups",      sets: 3, low: 5,  high: 8,  equip: "bodyweight", group: "pull", cat: "compound" },
+          { name: "Chest-Supported Row",    sets: 3, low: 8,  high: 12, equip: "machine",  group: "pull", cat: "compound" },
+          { name: "Cable Row",              sets: 2, low: 10, high: 15, equip: "cable",    group: "pull", cat: "compound" },
+          { name: "Cable Curl",             sets: 2, low: 10, high: 15, equip: "cable",    group: "pull", cat: "isolation" }
+        ]
+      },
+      {
+        id: "p3",
+        name: "Legs A",
+        exercises: [
+          { name: "Back Squat",             sets: 3, low: 5,  high: 8,  equip: "barbell",  group: "legs", cat: "compound" },
+          { name: "Romanian Deadlift",      sets: 3, low: 6,  high: 10, equip: "barbell",  group: "legs", cat: "compound" },
+          { name: "Leg Press",              sets: 2, low: 10, high: 15, equip: "machine",  group: "legs", cat: "compound" },
+          { name: "Calf Raise",             sets: 2, low: 10, high: 15, equip: "machine",  group: "legs", cat: "isolation" }
+        ]
+      },
+      {
+        id: "p4",
+        name: "Push B",
+        exercises: [
+          { name: "Incline Barbell Press",  sets: 3, low: 6,  high: 10, equip: "barbell",  group: "push", cat: "compound" },
+          { name: "Weighted Dips",          sets: 3, low: 6,  high: 10, equip: "bodyweight", group: "push", cat: "compound" },
+          { name: "Lateral Raise",          sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" }
+        ]
+      },
+      {
+        id: "p5",
+        name: "Pull B",
+        exercises: [
+          { name: "Barbell Row",            sets: 3, low: 6,  high: 10, equip: "barbell",  group: "pull", cat: "compound" },
+          { name: "Lat Pulldown",           sets: 3, low: 8,  high: 12, equip: "machine",  group: "pull", cat: "compound" },
+          { name: "Face Pull",              sets: 2, low: 12, high: 20, equip: "cable",    group: "pull", cat: "isolation" }
+        ]
+      },
+      {
+        id: "p6",
+        name: "Legs B",
+        exercises: [
+          { name: "Front Squat or Hack Squat", sets: 3, low: 6,  high: 10, equip: "machine",  group: "legs", cat: "compound" },
+          { name: "Leg Curl",               sets: 3, low: 10, high: 15, equip: "machine",  group: "legs", cat: "isolation" },
+          { name: "Calf Raise",             sets: 2, low: 10, high: 15, equip: "machine",  group: "legs", cat: "isolation" }
+        ]
+      }
+    ]
+  },
+
+  {
+    id: "arnold-6d",
+    name: "Arnold (Chest/Back • Shoulders/Arms • Legs, repeat)",
+    days: [
+      {
+        id: "a1",
+        name: "Chest + Back",
+        exercises: [
+          { name: "Incline Bench Press",    sets: 4, low: 6,  high: 10, equip: "barbell",  group: "push", cat: "compound" },
+          { name: "Pull-up / Pulldown",     sets: 4, low: 6,  high: 10, equip: "machine",  group: "pull", cat: "compound" },
+          { name: "DB Fly",                 sets: 3, low: 10, high: 15, equip: "dumbbell", group: "push", cat: "isolation" },
+          { name: "Barbell Row",            sets: 3, low: 6,  high: 10, equip: "barbell",  group: "pull", cat: "compound" }
+        ]
+      },
+      {
+        id: "a2",
+        name: "Shoulders + Arms",
+        exercises: [
+          { name: "Overhead Press",         sets: 4, low: 6,  high: 10, equip: "barbell",  group: "push",  cat: "compound" },
+          { name: "Lateral Raise",          sets: 4, low: 12, high: 20, equip: "dumbbell", group: "push",  cat: "isolation" },
+          { name: "EZ Curl",                sets: 3, low: 8,  high: 12, equip: "barbell",  group: "pull",  cat: "isolation" },
+          { name: "Cable Pushdown",         sets: 3, low: 10, high: 15, equip: "cable",    group: "push",  cat: "isolation" }
+        ]
+      },
+      {
+        id: "a3",
+        name: "Legs",
+        exercises: [
+          { name: "Squat",                  sets: 4, low: 5,  high: 8,  equip: "barbell",  group: "legs", cat: "compound" },
+          { name: "Leg Press",              sets: 3, low: 10, high: 15, equip: "machine",  group: "legs", cat: "compound" },
+          { name: "Leg Curl",               sets: 3, low: 10, high: 15, equip: "machine",  group: "legs", cat: "isolation" },
+          { name: "Standing Calf",          sets: 4, low: 12, high: 20, equip: "machine",  group: "legs", cat: "isolation" }
+        ]
+      }
+    ]
+  },
+
+  {
+    id: "fb-3d",
+    name: "Full Body • 3×/wk (Beginners)",
+    days: [
+      {
+        id: "f1",
+        name: "Full 1",
+        exercises: [
+          { name: "Squat",                  sets: 3, low: 5,  high: 8,  equip: "barbell",  group: "legs", cat: "compound" },
+          { name: "Bench Press",            sets: 3, low: 6,  high: 10, equip: "barbell",  group: "push", cat: "compound" },
+          { name: "Pull-up (Assisted ok)",  sets: 3, low: 6,  high: 10, equip: "bodyweight", group: "pull", cat: "compound" },
+          { name: "Hip Thrust",             sets: 3, low: 8,  high: 12, equip: "barbell",  group: "legs", cat: "compound" }
+        ]
+      },
+      {
+        id: "f2",
+        name: "Full 2",
+        exercises: [
+          { name: "Deadlift",               sets: 2, low: 3,  high: 5,  equip: "barbell",  group: "pull", cat: "compound" },
+          { name: "Incline DB Press",       sets: 3, low: 8,  high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+          { name: "Row (Machine)",          sets: 3, low: 8,  high: 12, equip: "machine",  group: "pull", cat: "compound" },
+          { name: "Lateral Raise",          sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" }
+        ]
+      },
+      {
+        id: "f3",
+        name: "Full 3",
+        exercises: [
+          { name: "Front Squat",            sets: 3, low: 5,  high: 8,  equip: "barbell",  group: "legs", cat: "compound" },
+          { name: "Overhead Press",         sets: 3, low: 6,  high: 10, equip: "barbell",  group: "push", cat: "compound" },
+          { name: "Lat Pulldown",           sets: 3, low: 10, high: 12, equip: "machine",  group: "pull", cat: "compound" },
+          { name: "Curl + Pushdown (superset)", sets: 3, low: 10, high: 15, equip: "cable", group: "arms", cat: "isolation" }
+        ]
+      }
+    ]
+  },
+
+  {
+    id: "minimal-2d",
+    name: "Minimalist • 2×/wk (Busy lifter)",
+    days: [
+      {
+        id: "m1",
+        name: "A",
+        exercises: [
+          { name: "Back Squat",             sets: 3, low: 5,  high: 8,  equip: "barbell",  group: "legs", cat: "compound" },
+          { name: "Bench Press",            sets: 3, low: 6,  high: 10, equip: "barbell",  group: "push", cat: "compound" },
+          { name: "Lat Pulldown",           sets: 3, low: 8,  high: 12, equip: "machine",  group: "pull", cat: "compound" }
+        ]
+      },
+      {
+        id: "m2",
+        name: "B",
+        exercises: [
+          { name: "Deadlift (RDL ok)",      sets: 3, low: 5,  high: 8,  equip: "barbell",  group: "pull", cat: "compound" },
+          { name: "Overhead Press",         sets: 3, low: 6,  high: 10, equip: "barbell",  group: "push", cat: "compound" },
+          { name: "Row (Machine)",          sets: 3, low: 8,  high: 12, equip: "machine",  group: "pull", cat: "compound" }
+        ]
+      }
+    ]
+  },
+
+  {
+    id: "bro-5d",
+    name: "Bro Split • 5×/wk (Chest/Back/Shoulders/Legs/Arms)",
+    days: [
+      {
+        id: "b1",
+        name: "Chest",
+        exercises: [
+          { name: "Bench Press",            sets: 4, low: 5,  high: 8,  equip: "barbell",  group: "push", cat: "compound" },
+          { name: "Incline DB Press",       sets: 3, low: 8,  high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+          { name: "Cable Fly",              sets: 3, low: 12, high: 15, equip: "cable",    group: "push", cat: "isolation" }
+        ]
+      },
+      {
+        id: "b2",
+        name: "Back",
+        exercises: [
+          { name: "Pull-ups",               sets: 4, low: 6,  high: 10, equip: "bodyweight", group: "pull", cat: "compound" },
+          { name: "Barbell Row",            sets: 3, low: 6,  high: 10, equip: "barbell",  group: "pull", cat: "compound" },
+          { name: "Face Pull",              sets: 3, low: 12, high: 20, equip: "cable",    group: "pull", cat: "isolation" }
+        ]
+      },
+      {
+        id: "b3",
+        name: "Shoulders",
+        exercises: [
+          { name: "Overhead Press",         sets: 4, low: 6,  high: 10, equip: "barbell",  group: "push", cat: "compound" },
+          { name: "Lateral Raise",          sets: 4, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+          { name: "Rear Delt Fly",          sets: 3, low: 12, high: 20, equip: "dumbbell", group: "pull", cat: "isolation" }
+        ]
+      },
+      {
+        id: "b4",
+        name: "Legs",
+        exercises: [
+          { name: "Back Squat",             sets: 4, low: 5,  high: 8,  equip: "barbell",  group: "legs", cat: "compound" },
+          { name: "Romanian Deadlift",      sets: 3, low: 6,  high: 10, equip: "barbell",  group: "legs", cat: "compound" },
+          { name: "Leg Curl",               sets: 3, low: 10, high: 15, equip: "machine",  group: "legs", cat: "isolation" },
+          { name: "Calf Raise",             sets: 3, low: 12, high: 20, equip: "machine",  group: "legs", cat: "isolation" }
+        ]
+      },
+      {
+        id: "b5",
+        name: "Arms",
+        exercises: [
+          { name: "EZ Bar Curl",            sets: 3, low: 8,  high: 12, equip: "barbell",  group: "pull", cat: "isolation" },
+          { name: "Cable Pushdown",         sets: 3, low: 10, high: 15, equip: "cable",    group: "push", cat: "isolation" },
+          { name: "Incline DB Curl",        sets: 3, low: 10, high: 15, equip: "dumbbell", group: "pull", cat: "isolation" },
+          { name: "Overhead Rope Extension",sets: 3, low: 10, high: 15, equip: "cable",    group: "push", cat: "isolation" }
+        ]
+      }
+    ]
+  }
+];
+
 
 // ---------- helpers ----------
 function uid() { return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2); }

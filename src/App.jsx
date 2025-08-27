@@ -14,7 +14,258 @@ import CoachChat from "./components/CoachChat";
 import Analytics from "./components/Analytics";
 import { aiSuggestNext, aiCoachNote, aiDescribe } from "./utils/ai";
 
-// ---------- small localStorage helper ----------
+/* ============================
+   TEMPLATES (science-forward)
+   ============================ */
+const TEMPLATES = [
+  {
+    id: "ul-rest-repeat",
+    name: "Upper/Lower (Rest-Repeat cycle)",
+    note: "2-day training cycle; run U/L then take a rest day and repeat.",
+    days: [
+      {
+        name: "Upper",
+        exercises: [
+          { name: "Bench Press", sets: 4, low: 5, high: 8, equip: "barbell", group: "push", cat: "compound" },
+          { name: "Chest-Supported Row", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+          { name: "Overhead Press", sets: 3, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+          { name: "Lat Pulldown", sets: 3, low: 10, high: 12, equip: "machine", group: "pull", cat: "compound" },
+          { name: "Lateral Raise", sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+          { name: "Cable Curl", sets: 2, low: 10, high: 15, equip: "cable", group: "pull", cat: "isolation" },
+        ],
+      },
+      {
+        name: "Lower",
+        exercises: [
+          { name: "Back Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+          { name: "Romanian Deadlift", sets: 3, low: 6, high: 10, equip: "barbell", group: "legs", cat: "compound" },
+          { name: "Leg Press", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "compound" },
+          { name: "Leg Curl", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+          { name: "Standing Calf Raise", sets: 3, low: 12, high: 20, equip: "machine", group: "legs", cat: "isolation" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "ppl-6d",
+    name: "PPL • 6×/wk",
+    note: "Push / Pull / Legs, repeat. Higher frequency & volume.",
+    days: [
+      {
+        name: "Push A",
+        exercises: [
+          { name: "Barbell Bench Press", sets: 4, low: 5, high: 8, equip: "barbell", group: "push", cat: "compound" },
+          { name: "Incline DB Press", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+          { name: "Cable Fly", sets: 3, low: 12, high: 15, equip: "cable", group: "push", cat: "isolation" },
+          { name: "Overhead Press (Smith)", sets: 3, low: 6, high: 10, equip: "smith", group: "push", cat: "compound" },
+          { name: "Lateral Raise", sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+          { name: "Triceps Rope Pushdown", sets: 3, low: 10, high: 15, equip: "cable", group: "push", cat: "isolation" },
+        ],
+      },
+      {
+        name: "Pull A",
+        exercises: [
+          { name: "Weighted Pull-up", sets: 4, low: 5, high: 8, equip: "bodyweight", group: "pull", cat: "compound" },
+          { name: "Barbell Row", sets: 3, low: 6, high: 10, equip: "barbell", group: "pull", cat: "compound" },
+          { name: "Lat Pulldown", sets: 3, low: 10, high: 12, equip: "machine", group: "pull", cat: "compound" },
+          { name: "Cable Row", sets: 3, low: 10, high: 12, equip: "cable", group: "pull", cat: "compound" },
+          { name: "Face Pull", sets: 3, low: 12, high: 20, equip: "cable", group: "pull", cat: "isolation" },
+          { name: "DB Curl", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "pull", cat: "isolation" },
+        ],
+      },
+      {
+        name: "Legs A",
+        exercises: [
+          { name: "Back Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+          { name: "Romanian Deadlift", sets: 3, low: 6, high: 10, equip: "barbell", group: "legs", cat: "compound" },
+          { name: "Leg Press", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "compound" },
+          { name: "Leg Curl", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+          { name: "Standing Calf Raise", sets: 3, low: 12, high: 20, equip: "machine", group: "legs", cat: "isolation" },
+        ],
+      },
+      {
+        name: "Push B",
+        exercises: [
+          { name: "Incline Bench Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+          { name: "Seated DB Shoulder Press", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+          { name: "Machine Chest Press", sets: 3, low: 10, high: 12, equip: "machine", group: "push", cat: "compound" },
+          { name: "Cable Lateral Raise", sets: 3, low: 12, high: 20, equip: "cable", group: "push", cat: "isolation" },
+          { name: "Overhead Rope Extension", sets: 3, low: 10, high: 15, equip: "cable", group: "push", cat: "isolation" },
+        ],
+      },
+      {
+        name: "Pull B",
+        exercises: [
+          { name: "Deadlift (RPE 7)", sets: 3, low: 3, high: 5, equip: "barbell", group: "pull", cat: "compound" },
+          { name: "Chest-Supported Row", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+          { name: "Single-arm Pulldown", sets: 3, low: 10, high: 15, equip: "cable", group: "pull", cat: "compound" },
+          { name: "Reverse Pec Deck", sets: 3, low: 12, high: 20, equip: "machine", group: "pull", cat: "isolation" },
+          { name: "EZ Bar Curl", sets: 3, low: 8, high: 12, equip: "barbell", group: "pull", cat: "isolation" },
+        ],
+      },
+      {
+        name: "Legs B",
+        exercises: [
+          { name: "Front Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+          { name: "Hip Thrust", sets: 3, low: 8, high: 12, equip: "barbell", group: "legs", cat: "compound" },
+          { name: "Leg Extension", sets: 3, low: 12, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+          { name: "Seated Calf Raise", sets: 3, low: 12, high: 20, equip: "machine", group: "legs", cat: "isolation" },
+          { name: "Hanging Leg Raise", sets: 3, low: 10, high: 15, equip: "bodyweight", group: "core", cat: "isolation" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "arnold-6d",
+    name: "Arnold (C/B • S/A • Legs, repeat)",
+    note: "Classic high-volume split (Chest+Back, Shoulders+Arms, Legs).",
+    days: [
+      {
+        name: "Chest + Back",
+        exercises: [
+          { name: "Incline Bench Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+          { name: "Pull-up / Pulldown", sets: 4, low: 6, high: 10, equip: "machine", group: "pull", cat: "compound" },
+          { name: "DB Fly", sets: 3, low: 10, high: 15, equip: "dumbbell", group: "push", cat: "isolation" },
+          { name: "Barbell Row", sets: 3, low: 6, high: 10, equip: "barbell", group: "pull", cat: "compound" },
+        ],
+      },
+      {
+        name: "Shoulders + Arms",
+        exercises: [
+          { name: "Overhead Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+          { name: "Lateral Raise", sets: 4, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+          { name: "EZ Curl", sets: 3, low: 8, high: 12, equip: "barbell", group: "pull", cat: "isolation" },
+          { name: "Cable Pushdown", sets: 3, low: 10, high: 15, equip: "cable", group: "push", cat: "isolation" },
+        ],
+      },
+      {
+        name: "Legs",
+        exercises: [
+          { name: "Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+          { name: "Leg Press", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "compound" },
+          { name: "Leg Curl", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+          { name: "Standing Calf", sets: 4, low: 12, high: 20, equip: "machine", group: "legs", cat: "isolation" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "fullbody-3d",
+    name: "Full Body • 3×/wk",
+    note: "Great for busy schedules and beginners/intermediates.",
+    days: [
+      {
+        name: "Full A",
+        exercises: [
+          { name: "Back Squat", sets: 3, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+          { name: "Bench Press", sets: 3, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+          { name: "Lat Pulldown", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+          { name: "Plank", sets: 2, low: 30, high: 60, equip: "bodyweight", group: "core", cat: "isolation" },
+        ],
+      },
+      {
+        name: "Full B",
+        exercises: [
+          { name: "Romanian Deadlift", sets: 3, low: 6, high: 10, equip: "barbell", group: "legs", cat: "compound" },
+          { name: "Overhead Press", sets: 3, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+          { name: "Seated Row", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+          { name: "Calf Raise", sets: 2, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+        ],
+      },
+      {
+        name: "Full C",
+        exercises: [
+          { name: "Front Squat or Hack Squat", sets: 3, low: 6, high: 10, equip: "machine", group: "legs", cat: "compound" },
+          { name: "Incline DB Press", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+          { name: "Pull-ups or Assisted", sets: 3, low: 6, high: 10, equip: "bodyweight", group: "pull", cat: "compound" },
+          { name: "Cable Curl", sets: 2, low: 10, high: 15, equip: "cable", group: "pull", cat: "isolation" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "minimal-2d",
+    name: "Minimal • 2×/wk",
+    note: "Time-crunched? Two fast sessions; progressive over time.",
+    days: [
+      {
+        name: "Day 1",
+        exercises: [
+          { name: "Back Squat", sets: 3, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+          { name: "Bench Press", sets: 3, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+          { name: "Lat Pulldown", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+        ],
+      },
+      {
+        name: "Day 2",
+        exercises: [
+          { name: "Deadlift (RDL or Trap Bar)", sets: 3, low: 3, high: 6, equip: "barbell", group: "pull", cat: "compound" },
+          { name: "Incline DB Press", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+          { name: "Chest-Supported Row", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "bro-5d",
+    name: "Bro Split • 5×/wk",
+    note: "Chest, Back, Shoulders, Legs, Arms (or sequence you prefer).",
+    days: [
+      {
+        name: "Chest",
+        exercises: [
+          { name: "Bench Press", sets: 4, low: 5, high: 8, equip: "barbell", group: "push", cat: "compound" },
+          { name: "Incline DB Press", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+          { name: "Cable Fly", sets: 3, low: 12, high: 15, equip: "cable", group: "push", cat: "isolation" },
+        ],
+      },
+      {
+        name: "Back",
+        exercises: [
+          { name: "Deadlift (RPE 7)", sets: 3, low: 3, high: 5, equip: "barbell", group: "pull", cat: "compound" },
+          { name: "Chest-Supported Row", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+          { name: "Lat Pulldown", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+        ],
+      },
+      {
+        name: "Shoulders",
+        exercises: [
+          { name: "Overhead Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+          { name: "Lateral Raise", sets: 4, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+          { name: "Rear Delt Fly (machine)", sets: 3, low: 12, high: 20, equip: "machine", group: "pull", cat: "isolation" },
+        ],
+      },
+      {
+        name: "Legs",
+        exercises: [
+          { name: "Back Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+          { name: "Romanian Deadlift", sets: 3, low: 6, high: 10, equip: "barbell", group: "legs", cat: "compound" },
+          { name: "Leg Extension", sets: 3, low: 12, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+          { name: "Seated Calf Raise", sets: 3, low: 12, high: 20, equip: "machine", group: "legs", cat: "isolation" },
+        ],
+      },
+      {
+        name: "Arms",
+        exercises: [
+          { name: "EZ Bar Curl", sets: 3, low: 8, high: 12, equip: "barbell", group: "pull", cat: "isolation" },
+          { name: "Triceps Rope Pushdown", sets: 3, low: 10, high: 15, equip: "cable", group: "push", cat: "isolation" },
+          { name: "Incline DB Curl", sets: 3, low: 10, high: 15, equip: "dumbbell", group: "pull", cat: "isolation" },
+          { name: "Overhead Rope Extension", sets: 3, low: 10, high: 15, equip: "cable", group: "push", cat: "isolation" },
+        ],
+      },
+    ],
+  },
+];
+
+/* ================
+   small helpers
+   ================ */
+function uid() { return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2); }
+function todayISO() { return new Date().toISOString().slice(0, 10); }
+
+/* ================
+   local storage hook
+   ================ */
 function useLocalState(key, initial) {
   const [val, setVal] = useState(() => {
     try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : initial; }
@@ -24,11 +275,9 @@ function useLocalState(key, initial) {
   return [val, setVal];
 }
 
-// ---------- helpers ----------
-function uid() { return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2); }
-function todayISO() { return new Date().toISOString().slice(0, 10); }
-
-// ---------- login ----------
+/* ================
+   login screen
+   ================ */
 function LoginScreen() {
   const [email, setEmail] = useState(""); const [pass, setPass] = useState("");
   const [mode, setMode] = useState("signin"); const [error, setError] = useState("");
@@ -59,19 +308,15 @@ function LoginScreen() {
         <div className="mt-4 grid gap-2">
           <input className="input" placeholder="Email" value={email} onChange={(e)=>setEmail(e.target.value)} type="email"/>
           <input className="input" placeholder="Password" value={pass} onChange={(e)=>setPass(e.target.value)} type="password"/>
-          {mode === "signin" ? (
-            <button className="btn-primary" onClick={doSignIn}>Sign in</button>
-          ) : (
-            <button className="btn-primary" onClick={doSignUp}>Create account</button>
-          )}
+          {mode === "signin"
+            ? <button className="btn-primary" onClick={doSignIn}>Sign in</button>
+            : <button className="btn-primary" onClick={doSignUp}>Create account</button>}
           <div className="text-xs text-neutral-400 text-center">Email verification required. We use Firebase Auth free tier.</div>
         </div>
         <div className="mt-3 text-center">
-          {mode === "signin" ? (
-            <button className="btn" onClick={() => setMode("signup")}>No account? Sign up</button>
-          ) : (
-            <button className="btn" onClick={() => setMode("signin")}>Have an account? Sign in</button>
-          )}
+          {mode === "signin"
+            ? <button className="btn" onClick={() => setMode("signup")}>No account? Sign up</button>
+            : <button className="btn" onClick={() => setMode("signin")}>Have an account? Sign in</button>}
         </div>
         {!!error && <div className="mt-3 text-sm text-red-400">{error}</div>}
         {mode === "verifySent" && <div className="mt-3 text-sm text-emerald-400">Verification email sent. Verify, then sign in again.</div>}
@@ -80,7 +325,9 @@ function LoginScreen() {
   );
 }
 
-// ---------- main ----------
+/* ================
+   main app
+   ================ */
 export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState(null);
@@ -95,7 +342,7 @@ export default function App() {
   // coach note / describe modal
   const [coachNote, setCoachNote] = useState(""); const [showCoachNote, setShowCoachNote] = useState(false);
   const [descText, setDescText] = useState(""); const [descFor, setDescFor] = useState(""); const [showDesc, setShowDesc] = useState(false);
-  const [descLoading, setDescLoading] = useState(""); // holds exercise name while describe runs
+  const [descLoading, setDescLoading] = useState("");
 
   // importer/templates modals
   const [showImporter, setShowImporter] = useState(false);
@@ -128,15 +375,16 @@ export default function App() {
     } catch {}
   }
 
-  function discardWorkout(){ if (confirm("Discard current session?")) setWork(null); }
-
   // ---- template / import ----
   function applyTemplate(t) {
     if (split && !confirm("You already have a split. Overwrite it?")) return;
     const days = t.days.map(d => ({ id: uid(), name:d.name, exercises: d.exercises.map(x=>({...x})) }));
     setSplit({ name: t.name, days }); setShowTemplates(false); setTab("log");
   }
-  function onImportConfirm(payload) { if (split && !confirm("You already have a split. Overwrite it?")) return; setSplit(payload); setShowImporter(false); setTab("log"); }
+  function onImportConfirm(payload) {
+    if (split && !confirm("You already have a split. Overwrite it?")) return;
+    setSplit(payload); setShowImporter(false); setTab("log");
+  }
 
   // ---- suggest / describe ----
   async function suggestFor(eIdx) {
@@ -220,6 +468,9 @@ export default function App() {
     reader.readAsText(file);
   }
 
+  useEffect(() => onAuthStateChanged(auth, u => { setUser(u || null); setAuthReady(true); }), []);
+  async function discardWorkout(){ if (confirm("Discard current session?")) setWork(null); }
+
   if (!authReady) return <div className="min-h-screen grid place-items-center text-neutral-400">Loading…</div>;
   if (!user) return <LoginScreen />;
 
@@ -269,7 +520,7 @@ export default function App() {
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold">{work.dayName} — {work.date}</h3>
                   <div className="flex gap-2">
-                    <button className="btn" onClick={() => { if (confirm("Discard current session?")) setWork(null); }}>Discard</button>
+                    <button className="btn" onClick={discardWorkout}>Discard</button>
                     <button className="btn-primary" onClick={saveWorkout}>Save session</button>
                   </div>
                 </div>
@@ -410,7 +661,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Templates modal (if you kept templates) */}
+            {/* Templates modal */}
             {showTemplates && (
               <div className="fixed inset-0 bg-black/60 grid place-items-center p-2 z-50">
                 <div className="w-full max-w-4xl bg-neutral-950 border border-neutral-800 rounded-2xl p-3">
@@ -418,8 +669,23 @@ export default function App() {
                     <h3 className="font-semibold">Templates</h3>
                     <button className="btn" onClick={() => setShowTemplates(false)}>Close</button>
                   </div>
-                  {/* If you removed the built-in list, populate your template cards here. */}
-                  <div className="mt-3 text-neutral-400">Choose a template (if available).</div>
+
+                  <div className="mt-3 grid gap-3">
+                    {TEMPLATES.map((t) => (
+                      <div key={t.id} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <div className="font-semibold">{t.name}</div>
+                            <div className="text-xs text-neutral-400">
+                              {t.days.length} day(s) • {t.days.reduce((a, d) => a + d.exercises.length, 0)} exercises
+                              {t.note ? ` • ${t.note}` : ""}
+                            </div>
+                          </div>
+                          <button className="btn-primary" onClick={() => applyTemplate(t)}>Use this</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -467,7 +733,9 @@ export default function App() {
         )}
       </main>
 
-      <footer className="mt-8 text-center text-xs text-neutral-500 safe-px">Works offline • Advice-only AI when online</footer>
+      <footer className="mt-8 text-center text-xs text-neutral-500 safe-px">
+        Works offline • Advice-only AI when online
+      </footer>
 
       {/* Coach note modal */}
       {showCoachNote && (

@@ -5,6 +5,7 @@ async function postJSON(url, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body ?? {}),
   });
+  // serverless routes always return JSON with ok flag
   return r.json();
 }
 

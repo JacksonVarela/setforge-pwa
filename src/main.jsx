@@ -6,7 +6,6 @@ import "./index.css";
 import "./firebase";
 
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-
 import { registerSW } from "virtual:pwa-register";
 registerSW({ immediate: true });
 

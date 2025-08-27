@@ -7,13 +7,21 @@ export default function ImporterAI({ onConfirm, onCancel }) {
   const [phase, setPhase] = useState("paste"); // paste | review
   const [name, setName] = useState("Imported Split");
   const [days, setDays] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
 
   async function runParse() {
     const txt = raw.trim();
-    if (!txt) return;
+    if (!txt || busy) return;
+    setBusy(true);
+    setErr("");
     try {
       const { days: parsed } = await aiParseSplit(txt);
-      const parsedDays = (parsed || []).map((d) => ({
+      if (!parsed?.length) {
+        setErr("Couldn’t recognize any days/exercises. Paste plain text like:\n\nPUSH A\nIncline Barbell Press — 3 x 6–10\n...");
+        return;
+      }
+      const parsedDays = parsed.map((d) => ({
         id: crypto.randomUUID(),
         name: d.name || "DAY",
         items: (d.items || d.exercises || []).map((x) => ({
@@ -30,8 +38,11 @@ export default function ImporterAI({ onConfirm, onCancel }) {
       }));
       setDays(parsedDays);
       setPhase("review");
-    } catch {
-      alert("Could not parse. Paste plain text or try again.");
+    } catch (e) {
+      console.error(e);
+      setErr("Could not reach AI parser. Check your OPENAI_API_KEY on Vercel.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -77,13 +88,21 @@ export default function ImporterAI({ onConfirm, onCancel }) {
           <div className="mt-3 grid gap-2">
             <input className="input" value={name} onChange={(e)=>setName(e.target.value)} placeholder="Split name" />
             <textarea className="input h-48" value={raw} onChange={(e)=>setRaw(e.target.value)} placeholder={`PUSH A\nIncline Barbell Press — 3 × 6–10\n...`} />
+            {!!err && <pre className="text-xs text-red-400 whitespace-pre-wrap">{err}</pre>}
             <div className="text-xs text-neutral-400">or upload:</div>
             <input type="file" accept=".txt,.md,.csv,.json" onChange={handleFile} className="text-sm" />
           </div>
 
           <div className="mt-3 flex gap-2">
-            <button className="btn-primary" onClick={runParse}>AI Parse</button>
-            <button className="btn" onClick={onCancel}>Cancel</button>
+            <button className="btn-primary" onClick={runParse} disabled={busy}>
+              {busy ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-neutral-900 border-t-transparent" />
+                  Parsing…
+                </span>
+              ) : ("AI Parse")}
+            </button>
+            <button className="btn" onClick={onCancel} disabled={busy}>Cancel</button>
           </div>
         </div>
       </section>

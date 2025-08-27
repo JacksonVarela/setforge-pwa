@@ -5,25 +5,21 @@ import App from "./App.jsx";
 import "./index.css";
 import "./firebase";
 
-import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { registerSW } from "virtual:pwa-register";
 
-// Force-refresh to newest build as soon as it’s ready
+// Immediately swap to the newest service worker and refresh
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    // take over and reload right away so users don’t see stale UI
-    updateSW(true);
+    updateSW(true); // skipWaiting + clientsClaim
   },
   onOfflineReady() {
-    // no-op, just quiet success
-  }
+    // noop
+  },
 });
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
+    <App />
   </React.StrictMode>
 );

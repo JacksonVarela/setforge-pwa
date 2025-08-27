@@ -7,9 +7,11 @@ export default function ImporterAI({ onConfirm, onCancel }) {
   const [phase, setPhase] = useState("paste"); // paste | review
   const [name, setName] = useState("Imported Split");
   const [days, setDays] = useState([]);
+  const [busy, setBusy] = useState(false);
 
   async function runParse() {
-    if (!raw.trim()) return;
+    if (!raw.trim() || busy) return;
+    setBusy(true);
     try {
       const out = await aiParseSplit(raw);
       const parsedDays = (out.days || []).map((d) => ({
@@ -19,18 +21,21 @@ export default function ImporterAI({ onConfirm, onCancel }) {
           type: x.type || "exercise",
           name: x.name || "",
           sets: Number(x.sets || 3),
-          low: Number(x.low || 8),
-          high: Number(x.high || x.low || 12),
+          low: isNaN(Number(x.low)) ? (x.low || 8) : Number(x.low || 8),
+          high: isNaN(Number(x.high)) ? (x.high || x.low || 12) : Number(x.high || x.low || 12),
           equip: x.equip || "",
           group: x.group || "",
           isCompound: !!x.isCompound,
           attachments: x.attachments || []
         }))
       }));
+      if (!parsedDays.length) throw new Error("no-days");
       setDays(parsedDays);
       setPhase("review");
     } catch {
-      alert("Could not parse. Paste plain text or try again.");
+      alert("Could not parse. Paste plain text (e.g. 'Incline Barbell — 3 × 6–10'). Try again.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -39,7 +44,7 @@ export default function ImporterAI({ onConfirm, onCancel }) {
     if (!f) return;
     const ext = f.name.toLowerCase();
     if (!/(\.txt|\.md|\.csv|\.json)$/.test(ext)) {
-      alert("For now please upload .txt, .md, .csv, or .json. (DOCX/PDF: paste the text.)");
+      alert("Please upload .txt, .md, .csv, or .json. (For DOCX/PDF: paste the text.)");
       e.target.value = "";
       return;
     }
@@ -66,7 +71,7 @@ export default function ImporterAI({ onConfirm, onCancel }) {
   if (phase === "paste") {
     return (
       <section className="rounded-2xl border border-neutral-800 p-4 anime-overlay bg-import">
-        <div className="max-w-screen-sm mx-auto">
+        <div className="w-full max-w-screen-sm mx-auto">
           <h2 className="font-semibold">Import your split</h2>
           <p className="text-sm text-neutral-400">Paste text <em>or</em> upload a file. AI will detect days & exercises.</p>
 
@@ -77,8 +82,8 @@ export default function ImporterAI({ onConfirm, onCancel }) {
             <input type="file" accept=".txt,.md,.csv,.json" onChange={handleFile} className="text-sm" />
           </div>
 
-          <div className="mt-3 flex gap-2">
-            <button className="btn-primary" onClick={runParse}>AI Parse</button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button className="btn-primary" onClick={runParse} disabled={busy}>{busy ? "Parsing…" : "AI Parse"}</button>
             <button className="btn" onClick={onCancel}>Cancel</button>
           </div>
         </div>
@@ -89,7 +94,7 @@ export default function ImporterAI({ onConfirm, onCancel }) {
   // review
   return (
     <section className="rounded-2xl border border-neutral-800 p-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold">Review & fix</h3>
         <div className="flex gap-2">
           <button className="btn" onClick={() => setPhase("paste")}>Back</button>
@@ -119,94 +124,49 @@ export default function ImporterAI({ onConfirm, onCancel }) {
           </button>
         </div>
       </div>
+
       <div className="mt-3 grid gap-3">
         {days.map((d, di) => (
           <div key={d.id} className="rounded-xl border border-neutral-800 p-3">
-            <div className="flex items-center gap-2">
-              <input className="input" value={d.name} onChange={(e) => {
-                const next = structuredClone(days);
-                next[di].name = e.target.value;
-                setDays(next);
-              }} />
-            </div>
+            <input className="input" value={d.name} onChange={(e) => {
+              const next = structuredClone(days);
+              next[di].name = e.target.value;
+              setDays(next);
+            }} />
             <div className="mt-2 grid gap-2">
               {d.items.map((it, ii) => (
                 <div key={ii} className="rounded-lg bg-neutral-900 border border-neutral-800 p-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      className="input w-auto"
-                      value={it.type}
-                      onChange={(e)=>{
-                        const next = structuredClone(days);
-                        next[di].items[ii].type = e.target.value;
-                        setDays(next);
-                      }}
-                    >
+                    <select className="input w-auto" value={it.type} onChange={(e)=>{ const next = structuredClone(days); next[di].items[ii].type = e.target.value; setDays(next); }}>
                       <option value="exercise">Exercise</option>
                       <option value="heading">Heading</option>
                     </select>
-                    <input className="input flex-1" value={it.name} onChange={(e)=>{
-                      const next = structuredClone(days);
-                      next[di].items[ii].name = e.target.value;
-                      setDays(next);
-                    }} placeholder="Name"/>
+                    <input className="input flex-1" value={it.name} onChange={(e)=>{ const next = structuredClone(days); next[di].items[ii].name = e.target.value; setDays(next); }} placeholder="Name"/>
                     {it.type === "exercise" && (
                       <>
-                        <input className="input w-20" value={it.sets} onChange={(e)=>{
-                          const next = structuredClone(days);
-                          next[di].items[ii].sets = e.target.value;
-                          setDays(next);
-                        }} placeholder="sets"/>
-                        <input className="input w-20" value={it.low} onChange={(e)=>{
-                          const next = structuredClone(days);
-                          next[di].items[ii].low = e.target.value;
-                          setDays(next);
-                        }} placeholder="low"/>
-                        <input className="input w-20" value={it.high} onChange={(e)=>{
-                          const next = structuredClone(days);
-                          next[di].items[ii].high = e.target.value;
-                          setDays(next);
-                        }} placeholder="high"/>
-                        <select className="input w-auto" value={it.equip} onChange={(e)=>{
-                          const next = structuredClone(days);
-                          next[di].items[ii].equip = e.target.value;
-                          setDays(next);
-                        }}>
+                        <input className="input w-20" value={it.sets} onChange={(e)=>{ const next = structuredClone(days); next[di].items[ii].sets = e.target.value; setDays(next); }} placeholder="sets"/>
+                        <input className="input w-20" value={it.low} onChange={(e)=>{ const next = structuredClone(days); next[di].items[ii].low = e.target.value; setDays(next); }} placeholder="low"/>
+                        <input className="input w-20" value={it.high} onChange={(e)=>{ const next = structuredClone(days); next[di].items[ii].high = e.target.value; setDays(next); }} placeholder="high"/>
+                        <select className="input w-auto" value={it.equip} onChange={(e)=>{ const next = structuredClone(days); next[di].items[ii].equip = e.target.value; setDays(next); }}>
                           <option value="">equip…</option>
                           <option>barbell</option><option>dumbbell</option><option>machine</option><option>cable</option><option>smith</option><option>bodyweight</option>
                         </select>
-                        <select className="input w-auto" value={it.group} onChange={(e)=>{
-                          const next = structuredClone(days);
-                          next[di].items[ii].group = e.target.value;
-                          setDays(next);
-                        }}>
+                        <select className="input w-auto" value={it.group} onChange={(e)=>{ const next = structuredClone(days); next[di].items[ii].group = e.target.value; setDays(next); }}>
                           <option value="">group…</option>
                           <option>upper</option><option>lower</option><option>push</option><option>pull</option><option>legs</option><option>core</option><option>neck</option><option>forearms</option>
                         </select>
-                        <select className="input w-auto" value={it.isCompound ? "compound" : "isolation"} onChange={(e)=>{
-                          const next = structuredClone(days);
-                          next[di].items[ii].isCompound = e.target.value === "compound";
-                          setDays(next);
-                        }}>
+                        <select className="input w-auto" value={it.isCompound ? "compound" : "isolation"} onChange={(e)=>{ const next = structuredClone(days); next[di].items[ii].isCompound = e.target.value === "compound"; setDays(next); }}>
                           <option value="isolation">isolation</option>
                           <option value="compound">compound</option>
                         </select>
                         <button className="btn" onClick={() => enrichRow(di, ii)}>AI fill</button>
                       </>
                     )}
-                    <button className="btn" onClick={()=>{
-                      const next = structuredClone(days);
-                      next[di].items.splice(ii,1);
-                      setDays(next);
-                    }}>Remove</button>
+                    <button className="btn" onClick={()=>{ const next = structuredClone(days); next[di].items.splice(ii,1); setDays(next); }}>Remove</button>
                   </div>
                 </div>
               ))}
-              <button className="btn" onClick={()=>{
-                const next = structuredClone(days);
-                next[di].items.push({ type:"exercise", name:"", sets:3, low:8, high:12, equip:"machine", group:"upper", isCompound:false, attachments:[] });
-                setDays(next);
-              }}>+ Add item</button>
+              <button className="btn" onClick={()=>{ const next = structuredClone(days); next[di].items.push({ type:"exercise", name:"", sets:3, low:8, high:12, equip:"machine", group:"upper", isCompound:false, attachments:[] }); setDays(next); }}>+ Add item</button>
             </div>
           </div>
         ))}

@@ -5,26 +5,49 @@ async function postJSON(url, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body ?? {}),
   });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
 
 export async function aiParseSplit(text) {
-  // your /api/parse-split serverless route
   const r = await postJSON("/api/parse-split", { text });
   if (!r.ok) throw new Error("parse failed");
-  return r.out;
+  return { days: r.days || [] };
 }
 
 export async function aiExerciseInfo(name) {
   const r = await postJSON("/api/exercise-info", { name });
   if (!r.ok) return {};
-  return r.info || {};
+  return {
+    equip: r.equip || "machine",
+    group: r.group || "upper",
+    isCompound: !!r.isCompound,
+    attachments: Array.isArray(r.attachments) ? r.attachments : []
+  };
 }
 
-export async function coachChatSend(messages, { units = "lb", day = "" } = {}) {
-  // IMPORTANT: hits /api/coach-chat (you already have api/coach-chat.js)
+export async function coachChatSend(localMessages, { units = "lb", day = "" } = {}) {
+  const messages = (localMessages || []).map(m => ({
+    role: m.role,
+    content: String(m.content ?? m.text ?? "")
+  }));
   const r = await postJSON("/api/coach-chat", { messages, units, day });
   if (!r.ok) throw new Error("chat failed");
   return r.reply || "";
+}
+
+export async function aiCoachNote(session, recent = [], units = "lb", day = "") {
+  const r = await postJSON("/api/coach", { session, recent, units, day });
+  return r.advice || "";
+}
+
+export async function aiSuggestNext(payload) {
+  const r = await postJSON("/api/suggest", payload);
+  if (!r.ok) throw new Error("suggest failed");
+  return r.next || { weight: null, reps: null, note: "" };
+}
+
+export async function aiDescribe(name) {
+  const r = await postJSON("/api/describe", { name });
+  if (!r.ok) return "";
+  return r.text || "";
 }

@@ -1,6 +1,6 @@
-/* Mobile polish */
+/* Mobile polish / overflow guard */
+body { overflow-x: hidden; }
 @media (max-width: 480px) {
-  .btn { font-size: 13px; padding: 0.5rem 0.6rem; }
-  .btn-primary { font-size: 13px; }
+  .btn, .btn-primary { font-size: 13px; padding: 0.5rem 0.6rem; }
   .pill { font-size: 11px; }
 }

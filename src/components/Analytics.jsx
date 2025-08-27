@@ -1,84 +1,109 @@
 // src/components/Analytics.jsx
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { aiExerciseInfo } from "../utils/ai";
 
-// Helper: week key YYYY-Www
-function weekKey(iso) {
-  const d = new Date(iso + "T00:00:00");
-  const firstThursday = new Date(d.getFullYear(),0,1);
-  while (firstThursday.getDay() !== 4) firstThursday.setDate(firstThursday.getDate()+1);
-  const diff = d - firstThursday;
-  const week = Math.floor(diff / (7*24*3600*1000)) + 1;
-  const y = d.getFullYear();
-  return `${y}-W${String(week).padStart(2,"0")}`;
-}
+function weekKey(dISO){ return dISO.slice(0,7); } // YYYY-MM
 
-export default function Analytics({ sessions = [], split, units = "lb" }) {
-  // Map exercise -> group from split for volume calc
-  const exToGroup = useMemo(() => {
-    const map = {};
-    if (split?.days) {
-      split.days.forEach(d => d.exercises.forEach(x => { map[x.name] = x.group || "other"; }));
-    }
-    return map;
-  }, [split]);
+export default function Analytics({ sessions = [], split = null, units = "lb" }) {
+  const [enrichBusy, setEnrichBusy] = useState(false);
+  const [enrichCount, setEnrichCount] = useState(0);
 
-  // Weekly set counts
-  const weekly = useMemo(() => {
-    const bucket = {};
-    sessions.forEach(s => {
-      const wk = weekKey(s.date || new Date().toISOString().slice(0,10));
-      bucket[wk] = bucket[wk] || 0;
-      (s.entries || []).forEach(e => bucket[wk] += (e.sets || []).length);
-    });
-    const keys = Object.keys(bucket).sort().slice(-8);
-    return keys.map(k => ({ week: k, sets: bucket[k] }));
-  }, [sessions]);
-
-  // Recent PRs (max weight per exercise)
-  const prs = useMemo(() => {
-    const best = {};
-    sessions.slice().reverse().forEach(s => {
-      (s.entries || []).forEach(e => {
-        const maxSet = (e.sets || []).reduce((m, x) => Math.max(m, Number(x.weight)||0), 0);
-        if (!best[e.name] || maxSet > best[e.name].weight) {
-          best[e.name] = { exercise: e.name, weight: maxSet, date: s.date };
+  const vol = useMemo(() => {
+    // naive: each working set = 1 "set" toward group
+    const acc = {};
+    for (const s of sessions) {
+      const w = weekKey(s.date || "");
+      acc[w] ||= {};
+      for (const e of (s.entries||[])) {
+        // handle single exercise entries only; supersets counted per child below
+        if (e.type === "superset" && Array.isArray(e.items)) {
+          for (const sub of e.items) {
+            const g = (sub.group || "other").toLowerCase();
+            acc[w][g] = (acc[w][g] || 0) + (sub.sets?.length || e.rounds || 0);
+          }
+        } else {
+          const g = (e.group || "other").toLowerCase();
+          acc[w][g] = (acc[w][g] || 0) + (e.sets?.length || 0);
         }
-      });
-    });
-    return Object.values(best).filter(x => x.weight>0).sort((a,b)=>b.weight-a.weight).slice(0,8);
+      }
+    }
+    // flatten
+    const keys = Array.from(new Set(Object.values(acc).flatMap(x=>Object.keys(x))));
+    return Object.entries(acc).map(([wk, groups]) => ({
+      week: wk, ...Object.fromEntries(keys.map(k=>[k, groups[k]||0]))
+    }));
   }, [sessions]);
+
+  async function enrichGroups() {
+    if (!split) return;
+    setEnrichBusy(true);
+    let changed = 0;
+    // enrich split exercises missing group/equip
+    const days = split.days?.map(d => {
+      const items = d.exercises?.map(it => {
+        if (it.type === "superset") {
+          const sub = it.items?.map(s => ({...s}));
+          return { ...it, items: sub };
+        }
+        return { ...it };
+      });
+      return { ...d, exercises: items };
+    }) || [];
+
+    for (const d of days) {
+      for (const it of (d.exercises||[])) {
+        if (it.type === "superset") {
+          for (const sub of (it.items||[])) {
+            if (!sub.group || !sub.equip) {
+              const info = await aiExerciseInfo(sub.name);
+              if (info.group && !sub.group) { sub.group = info.group; changed++; }
+              if (info.equip && !sub.equip) { sub.equip = info.equip; changed++; }
+            }
+          }
+        } else {
+          if (!it.group || !it.equip) {
+            const info = await aiExerciseInfo(it.name);
+            if (info.group && !it.group) { it.group = info.group; changed++; }
+            if (info.equip && !it.equip) { it.equip = info.equip; changed++; }
+          }
+        }
+      }
+    }
+    setEnrichBusy(false);
+    setEnrichCount(changed);
+    alert(changed ? `AI filled ${changed} missing fields. Close and reopen this tab to see volume grouped more accurately.` : "Everything already looks enriched.");
+  }
+
+  // choose top 6 groups to chart
+  const groups = useMemo(()=>{
+    const set = new Set();
+    for (const row of vol) for (const k of Object.keys(row)) if (k!=="week") set.add(k);
+    return Array.from(set).slice(0,6);
+  }, [vol]);
 
   return (
-    <section className="grid gap-4">
-      <div className="rounded-2xl border border-neutral-800 p-3">
-        <div className="font-semibold mb-2">Weekly sets (last 8 weeks)</div>
-        <div className="h-40">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={weekly}>
-              <XAxis dataKey="week" hide />
-              <YAxis allowDecimals={false} />
-              <Tooltip />
-              <Bar dataKey="sets" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+    <section className="rounded-2xl border border-neutral-800 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="font-semibold">Weekly volume (sets per muscle group)</div>
+        <button className="btn" onClick={enrichGroups} disabled={enrichBusy}>
+          {enrichBusy ? "Enriching…" : "AI fix groups"}
+        </button>
       </div>
-
-      <div className="rounded-2xl border border-neutral-800 p-3">
-        <div className="font-semibold mb-2">Recent PRs</div>
-        {!prs.length ? (
-          <div className="text-neutral-400 text-sm">No PRs yet. Log some sessions.</div>
-        ) : (
-          <ul className="text-sm text-neutral-300 grid gap-1">
-            {prs.map((p,i)=>(
-              <li key={i} className="flex justify-between">
-                <span>{p.exercise}</span>
-                <span className="text-neutral-400">{p.weight}{units} • {p.date}</span>
-              </li>
+      <div className="mt-3 h-60">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={vol}>
+            <XAxis dataKey="week" />
+            <YAxis />
+            <Tooltip />
+            {groups.map((g, i) => (
+              <Bar key={g} dataKey={g} stackId="a" fill={`hsl(${(i*70)%360},70%,55%)`} />
             ))}
-          </ul>
-        )}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="mt-2 text-xs text-neutral-400">
+        Each working set counts as 1. Use “AI fix groups” to infer missing exercise groups for more accurate aggregation.
       </div>
     </section>
   );

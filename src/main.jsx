@@ -7,7 +7,18 @@ import "./firebase";
 
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { registerSW } from "virtual:pwa-register";
-registerSW({ immediate: true });
+
+// Force-refresh to newest build as soon as it’s ready
+const updateSW = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    // take over and reload right away so users don’t see stale UI
+    updateSW(true);
+  },
+  onOfflineReady() {
+    // no-op, just quiet success
+  }
+});
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

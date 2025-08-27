@@ -9,53 +9,42 @@ async function postJSON(url, body) {
   return r.json();
 }
 
-// ---- Parser (what you asked to fix) ----
 export async function aiParseSplit(text) {
   const r = await postJSON("/api/parse-split", { text });
   if (!r.ok) throw new Error("parse failed");
   return { days: r.days || [] };
 }
 
-// ---- Keep these so other tabs don’t break, even if you don’t use them now ----
 export async function aiExerciseInfo(name) {
   const r = await postJSON("/api/exercise-info", { name });
   if (!r.ok) return {};
-  const { ok, ...info } = r;
-  return info;
+  return {
+    equip: r.equip || "",
+    group: r.group || "",
+    isCompound: !!r.isCompound,
+    attachments: Array.isArray(r.attachments) ? r.attachments : []
+  };
 }
 
-export async function coachChatSend(messages, { units = "lb", day = "" } = {}) {
-  const r = await postJSON("/api/coach-chat", { messages, units, day });
-  if (!r.ok) throw new Error("chat failed");
-  return r.reply || "";
-}
-
-// === Minimal, working exports to satisfy App.jsx ===
 export async function aiSuggestNext({
-  name = "",
-  history = [],
-  targetLow = 8,
-  targetHigh = 12,
-  units = "lb",
-  bodyweight = false,
-  failureFlags = [],
+  name, history, targetLow, targetHigh, units, bodyweight, failureFlags, lastRIR = null, lastRPE = null
 }) {
   const r = await postJSON("/api/suggest", {
-    name, history, targetLow, targetHigh, units, bodyweight, failureFlags,
+    name, history, targetLow, targetHigh, units, bodyweight, failureFlags, lastRIR, lastRPE
   });
   if (!r.ok) throw new Error("suggest failed");
-  const out = r.next ?? r;
-  return { weight: out?.weight ?? null, reps: out?.reps ?? null, note: out?.note ?? "" };
+  return {
+    next: r.next || { weight: null, reps: null, note: "" , restSeconds: 90 },
+    warmup: r.warmup || []
+  };
 }
 
 export async function aiCoachNote(session, recent = [], units = "lb", day = "") {
   const r = await postJSON("/api/coach", { session, recent, units, day });
-  if (!r.ok) return "";
-  return r.advice || "";
+  return r.ok ? (r.advice || "") : "";
 }
 
 export async function aiDescribe(name, equip = "machine", cat = "iso_small") {
   const r = await postJSON("/api/describe", { name, equip, cat });
-  if (!r.ok) return "";
-  return r.text || "";
+  return r.ok ? (r.text || "") : "";
 }

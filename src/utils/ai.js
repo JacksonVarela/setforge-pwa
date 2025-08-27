@@ -9,20 +9,14 @@ async function postJSON(url, body) {
   return r.json();
 }
 
-/**
- * Parse a plain-text split into structured days/items via /api/parse-split
- * Returns: { days: [...] }
- */
+// ---- Parser (what you asked to fix) ----
 export async function aiParseSplit(text) {
   const r = await postJSON("/api/parse-split", { text });
   if (!r.ok) throw new Error("parse failed");
   return { days: r.days || [] };
 }
 
-/**
- * Given an exercise name, fetch inferred metadata (equip, group, isCompound, attachments)
- * Your /api/exercise-info returns { ok:true, ...info }, so peel off ok
- */
+// ---- Keep these so other tabs don’t break, even if you don’t use them now ----
 export async function aiExerciseInfo(name) {
   const r = await postJSON("/api/exercise-info", { name });
   if (!r.ok) return {};
@@ -30,20 +24,13 @@ export async function aiExerciseInfo(name) {
   return info;
 }
 
-/**
- * Chat with coach (works with your /api/coach-chat)
- */
 export async function coachChatSend(messages, { units = "lb", day = "" } = {}) {
   const r = await postJSON("/api/coach-chat", { messages, units, day });
   if (!r.ok) throw new Error("chat failed");
   return r.reply || "";
 }
 
-/**
- * Suggest next weight/reps using your /api/suggest
- * That API typically returns { ok:true, next: { weight, reps, note } }
- * Normalize to { weight, reps, note } so UI can do e.suggest.weight, etc.
- */
+// === Minimal, working exports to satisfy App.jsx ===
 export async function aiSuggestNext({
   name = "",
   history = [],
@@ -54,39 +41,19 @@ export async function aiSuggestNext({
   failureFlags = [],
 }) {
   const r = await postJSON("/api/suggest", {
-    name,
-    history,
-    targetLow,
-    targetHigh,
-    units,
-    bodyweight,
-    failureFlags,
+    name, history, targetLow, targetHigh, units, bodyweight, failureFlags,
   });
-
   if (!r.ok) throw new Error("suggest failed");
-  // Prefer r.next if present; otherwise accept flattened shape
   const out = r.next ?? r;
-  return {
-    weight: out?.weight ?? null,
-    reps: out?.reps ?? null,
-    note: out?.note ?? "",
-  };
+  return { weight: out?.weight ?? null, reps: out?.reps ?? null, note: out?.note ?? "" };
 }
 
-/**
- * Short coach note for a saved session via /api/coach
- * API returns { ok:true, advice: string }
- */
 export async function aiCoachNote(session, recent = [], units = "lb", day = "") {
   const r = await postJSON("/api/coach", { session, recent, units, day });
   if (!r.ok) return "";
   return r.advice || "";
 }
 
-/**
- * Short exercise how-to via /api/describe
- * API returns { ok:true, text: string }
- */
 export async function aiDescribe(name, equip = "machine", cat = "iso_small") {
   const r = await postJSON("/api/describe", { name, equip, cat });
   if (!r.ok) return "";

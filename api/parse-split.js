@@ -1,3 +1,4 @@
+// /api/parse-split.js
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ ok:false, error:"POST only" });
   try {
@@ -30,13 +31,20 @@ Rules:
       headers: { Authorization:`Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type":"application/json" },
       body: JSON.stringify(body),
     });
+
+    if (!r.ok) {
+      const t = await r.text();
+      return res.status(200).json({ ok:false, days:[], error:`OpenAI error: ${r.status} ${t.slice(0,140)}` });
+    }
+
     const j = await r.json();
     const raw = j?.choices?.[0]?.message?.content || "{}";
     let out = {};
     try { out = JSON.parse(raw); } catch {}
-    res.status(200).json({ ok:true, ...out });
+    // Contract: ok + top-level fields (days)
+    return res.status(200).json({ ok:true, ...(typeof out === "object" ? out : {}), days: out.days || [] });
   } catch {
-    res.status(200).json({ ok:false, days:[] });
+    return res.status(200).json({ ok:false, days:[] });
   }
 }
 async function readJSON(req){ const a=[]; for await(const c of req) a.push(c); return JSON.parse(Buffer.concat(a).toString("utf8")||"{}"); }

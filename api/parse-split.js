@@ -33,15 +33,32 @@ Rules:
     }
 
     const j = await r.json();
-    const raw = j?.choices?.[0]?.message?.content || "{}";
-    let out = {};
-    try { out = JSON.parse(raw); } catch {}
-    const days = Array.isArray(out.days) ? out.days : [];
+    let raw = j?.choices?.[0]?.message?.content || "{}";
+
+    // Strip ```json ... ``` fences if present
+    raw = raw.trim().replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+    // Try parse; if it still fails, take substring between first { and last }
+    let out = safeJSON(raw);
+    if (!out) {
+      const start = raw.indexOf("{");
+      const end = raw.lastIndexOf("}");
+      if (start !== -1 && end !== -1 && end > start) {
+        out = safeJSON(raw.slice(start, end + 1));
+      }
+    }
+
+    let days = [];
+    if (out && Array.isArray(out.days)) days = out.days;
+    else if (out && out.result && Array.isArray(out.result.days)) days = out.result.days;
+
     return res.status(200).json({ ok:true, days });
-  } catch {
-    return res.status(200).json({ ok:false, days:[] });
+  } catch (e) {
+    return res.status(200).json({ ok:false, days:[], error:"Server parse error." });
   }
 }
+
+function safeJSON(s){ try { return JSON.parse(s); } catch { return null; } }
 
 async function readJSON(req){
   const a=[]; for await(const c of req) a.push(c);

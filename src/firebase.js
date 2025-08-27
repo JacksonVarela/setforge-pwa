@@ -3,9 +3,9 @@ import { initializeApp, getApps } from "firebase/app";
 import {
   getAuth,
   setPersistence,
-  browserSessionPersistence, // logs out when the browser closes (recommended)
-  // browserLocalPersistence, // stays logged in across restarts
-  // inMemoryPersistence,      // logs out on refresh
+  browserLocalPersistence,   // <-- persistent across restarts
+  // browserSessionPersistence, // (old) logs out when browser closes
+  // inMemoryPersistence,       // logs out on refresh
 } from "firebase/auth";
 
 export function initFirebaseApp() {
@@ -26,12 +26,12 @@ export function initFirebaseApp() {
 
   const app = initializeApp(cfg);
 
-  // Configure how Firebase keeps you signed in:
+  // Keep users signed in across browser restarts
   const auth = getAuth(app);
-  setPersistence(auth, browserSessionPersistence).catch(() => {});
+  setPersistence(auth, browserLocalPersistence).catch(() => {});
 
   return app;
 }
 
-// A single shared auth instance the whole app uses
+// One shared auth instance
 export const auth = getAuth(initFirebaseApp());

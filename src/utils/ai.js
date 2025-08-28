@@ -1,5 +1,4 @@
 // src/utils/ai.js
-
 async function postJSON(url, body) {
   const r = await fetch(url, {
     method: "POST",
@@ -11,17 +10,12 @@ async function postJSON(url, body) {
 }
 
 // --- Split parsing / exercise metadata ---
-
 export async function aiParseSplit(text) {
-  // /api/parse-split -> { ok:true, days:[...] }
   const j = await postJSON("/api/parse-split", { text });
   if (!j.ok) throw new Error("AI parse failed");
-  // Return {days:[...]} shape so ImporterAI can use j.days
   return { days: j.days || [] };
 }
-
 export async function aiExerciseInfo(name) {
-  // /api/exercise-info -> { ok:true, equip, group, isCompound, attachments:[] }
   const j = await postJSON("/api/exercise-info", { name });
   if (!j.ok) return {};
   const { equip, group, isCompound, attachments } = j;
@@ -29,69 +23,41 @@ export async function aiExerciseInfo(name) {
 }
 
 // --- Coach chat (in-app assistant) ---
-
 export async function coachChatSend(messages, { units = "lb", day = "" } = {}) {
-  // /api/coach-chat -> { ok:true, reply }
   const j = await postJSON("/api/coach-chat", { messages, units, day });
   if (!j.ok) throw new Error("chat failed");
   return j.reply || "";
 }
 
 // --- Suggestions & notes ---
-
 export async function aiSuggestNext({
-  name = "",
-  history = [],
-  targetLow = 8,
-  targetHigh = 12,
-  units = "lb",
-  bodyweight = false,
-  failureFlags = [],
+  name = "", history = [], targetLow = 8, targetHigh = 12, units = "lb",
+  bodyweight = false, failureFlags = [],
 } = {}) {
-  // /api/suggest -> { ok:true, next:{ weight, reps, note } }
   const j = await postJSON("/api/suggest", {
-    name,
-    history,
-    targetLow,
-    targetHigh,
-    units,
-    bodyweight,
-    failureFlags,
+    name, history, targetLow, targetHigh, units, bodyweight, failureFlags,
   });
   if (!j.ok) throw new Error("suggest failed");
   return { next: j.next || { weight: null, reps: null, note: "" } };
 }
-
-export async function aiCoachNote({
-  session = null,
-  recent = [],
-  units = "lb",
-  day = "",
-} = {}) {
-  // /api/coach -> { ok:true, advice }
+export async function aiCoachNote({ session = null, recent = [], units = "lb", day = "" } = {}) {
   const j = await postJSON("/api/coach", { session, recent, units, day });
   if (!j.ok) return { advice: "" };
   return { advice: j.advice || "" };
 }
-
 export async function aiDescribe({ name = "", equip = "machine", cat = "iso_small" } = {}) {
-  // /api/describe -> { ok:true, text }
   const j = await postJSON("/api/describe", { name, equip, cat });
   if (!j.ok) return { text: "" };
   return { text: j.text || "" };
 }
 
 // --- Warm-up & Rest helpers ---
-
-export async function aiWarmupPlan({ name = "", units = "lb" } = {}) {
-  // /api/warmup -> { ok:true, text }
-  const j = await postJSON("/api/warmup", { name, units });
+export async function aiWarmupPlan({ name = "", units = "lb", target = null } = {}) {
+  const j = await postJSON("/api/warmup", { name, units, target });
   if (!j.ok) return { text: "" };
   return { text: j.text || "" };
 }
-
 export async function aiRest({ name = "" } = {}) {
-  // /api/rest -> { ok:true, text }
   const j = await postJSON("/api/rest", { name });
   if (!j.ok) return { text: "" };
   return { text: j.text || "" };

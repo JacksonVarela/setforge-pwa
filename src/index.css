@@ -34,25 +34,26 @@ html, body {
 
 /* =========
    Full-viewport background images for login/import
-   with dark gradient fallback if images are missing
+   (has a gradient fallback so it never looks white)
    ========= */
 .bg-login, .bg-import {
   background-color: #0b0b0b;
-  background-image:
-    radial-gradient(120% 90% at 50% 10%, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.35) 45%, rgba(0,0,0,0.65) 100%),
-    linear-gradient(180deg, #0c0c0c 0%, #0a0a0a 40%, #090909 100%);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 }
 
-/* These image URLs require files in /public/images */
-.bg-login  { background-image:
+/* Requires files in /public/images */
+.bg-login {
+  background-image:
     radial-gradient(120% 90% at 50% 10%, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.35) 45%, rgba(0,0,0,0.65) 100%),
-    url('/images/bg-anime-login.webp'); }
-.bg-import { background-image:
+    url('/images/bg-anime-login.webp');
+}
+.bg-import {
+  background-image:
     radial-gradient(120% 90% at 50% 10%, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.35) 45%, rgba(0,0,0,0.65) 100%),
-    url('/images/bg-anime-import.webp'); }
+    url('/images/bg-anime-import.webp');
+}
 
 /* Subtle dark vignette overlay for readability over busy art */
 .anime-overlay { position: relative; }
@@ -115,31 +116,159 @@ html, body {
 }
 
 /* =========
-   Buttons/Input helpers (Tailwind still fine)
+   Buttons/Input helpers (no @apply to keep PostCSS happy)
    ========= */
 .btn {
-  @apply inline-flex items-center justify-center px-3 py-2 rounded-xl text-sm border transition;
-  background:#181818; border-color:var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.75rem; /* px-3 py-2 */
+  border-radius: 0.75rem;  /* rounded-xl */
+  font-size: 0.875rem;     /* text-sm */
+  line-height: 1;
+  border: 1px solid var(--border);
+  background: #181818;
+  color: var(--text);
+  transition: background .2s ease, color .2s ease, border-color .2s ease, filter .2s ease;
 }
 .btn:hover { background:#1f1f1f; }
 
 .btn-primary {
-  background: #ffffff; color:#111; border-color:#ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1;
+  border: 1px solid #ffffff;
+  background: #ffffff;
+  color: #111111;
+  transition: filter .2s ease;
 }
 .btn-primary:hover { filter: brightness(0.96); }
 
-.btn-ghost { background: transparent; border-color: var(--border); }
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+}
 
 .pill {
-  @apply inline-flex items-center px-2 py-1 rounded-lg text-xs;
-  background: #1a1a1a; border:1px solid var(--border); color:var(--muted);
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem; /* text-xs */
+  background: #1a1a1a;
+  border: 1px solid var(--border);
+  color: var(--muted);
 }
 
 .input {
-  @apply w-full px-3 py-2 rounded-lg text-sm;
-  background:#141414; color:var(--text); border:1px solid var(--border);
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: #141414;
+  color: var(--text);
+  border: 1px solid var(--border);
 }
 .input::placeholder { color:#7a7a7a; }
 
 /* Scrollbar (desktop polish) */
-* { scrollbar-width: th*
+* { scrollbar-width: thin; scrollbar-color: #3a3a3a transparent; }
+*::-webkit-scrollbar { width:8px; height:8px; }
+*::-webkit-scrollbar-thumb { background:#3a3a3a; border-radius:999px; }
+
+/* Safe padding for mobile notches */
+.safe-px {
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+}
+.safe-pt { padding-top: max(1rem, env(safe-area-inset-top)); }
+.safe-pb { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+
+/* =========
+   Resume banner (cloud draft)
+   ========= */
+.banner {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .5rem .75rem;
+  background: #0f172a;
+  border: 1px solid var(--border);
+  border-radius: .75rem;
+  margin-bottom: .5rem;
+}
+
+/* =========
+   Bottom action bar (mobile)
+   ========= */
+.bottombar {
+  position: sticky;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .5rem .75rem;
+  background: #0b0b0b;
+  border: 1px solid var(--border);
+  border-radius: .85rem;
+}
+
+/* =========
+   Spinner (for async buttons)
+   ========= */
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  display: inline-block;
+  border: 2px solid #aaa;
+  border-top-color: transparent;
+  border-radius: 999px;
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* =========
+   Compact mode (mobile density)
+   ========= */
+.compact .btn,
+.compact .btn-primary,
+.compact .pill,
+.compact .input {
+  font-size: 13px;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.6rem;
+}
+.compact .input { padding: 0.45rem 0.6rem; }
+.compact .coach-sticker { width: clamp(72px, 18vw, 132px); }
+.compact header .text-2xl,
+.compact header .text-xl { font-size: 1.1rem; }
+
+/* Keep nav buttons tighter on tiny screens */
+.compact nav button { padding-left: .5rem; padding-right: .5rem; }
+
+/* =========
+   Small screens: prevent horizontal scroll & ensure cards fit
+   ========= */
+@media (max-width: 380px) {
+  .input { min-width: 0; }
+  .btn, .btn-primary, .pill { white-space: nowrap; }
+  .bottombar { border-radius: .7rem; }
+}

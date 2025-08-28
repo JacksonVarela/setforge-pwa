@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// src/App.jsx
+import React, { useEffect, useMemo, useState } from "react";
 import { auth } from "./firebase";
 import {
   onAuthStateChanged,
@@ -8,12 +9,11 @@ import {
   signOut as fbSignOut,
 } from "firebase/auth";
 
-import { subscribeUserState, saveSplit, saveSessions, saveWorkDraft, clearWorkDraft } from "./db";
 import ImporterAI from "./components/ImporterAI";
 import CoachChat from "./components/CoachChat";
-import SpinnerButton from "./components/SpinnerButton";
-import Timer from "./components/Timer";
-import { aiDescribe, aiSuggestNext, aiRestSuggest, aiWarmupPlan, aiCoachNote } from "./utils/ai";
+
+// ---------- AI helpers that exist ----------
+import { aiSuggestNext, aiCoachNote, aiDescribe, aiWarmupPlan, aiRest } from "./utils/ai";
 
 // ---------- small localStorage helper ----------
 function useLocalState(key, initial) {
@@ -33,119 +33,121 @@ function useLocalState(key, initial) {
   return [val, setVal];
 }
 
-function uid() { return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2); }
-function todayISO() { return new Date().toISOString().slice(0,10); }
+// ---------- utility ----------
+function uid() {
+  return (crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
+}
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
 
-// ---------- templates ----------
+// ---------- templates (kept minimal here; you can expand) ----------
 const TEMPLATES = [
   {
-    id: "ulr-4d",
-    name: "Upper / Lower (Rest) • 4d",
+    id: "ul-rr",
+    name: "Upper/Lower/Rest (repeat)",
     days: [
-      { id:"u1", name:"Upper A", exercises:[
-        { name:"Bench Press", sets:4, low:5, high:8, equip:"barbell", group:"push", cat:"compound", ss:"" },
-        { name:"Chest-Supported Row", sets:3, low:8, high:12, equip:"machine", group:"pull", cat:"compound", ss:"" },
-        { name:"Overhead Press", sets:3, low:6, high:10, equip:"barbell", group:"push", cat:"compound", ss:"" },
-        { name:"Lat Pulldown", sets:3, low:10, high:12, equip:"machine", group:"pull", cat:"compound", ss:"" },
-        { name:"Lateral Raise", sets:3, low:12, high:20, equip:"dumbbell", group:"push", cat:"isolation", ss:"" },
+      { id: uid(), name: "Upper", exercises: [
+        { name: "Bench Press", sets: 4, low: 5, high: 8, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Row (Machine)", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+        { name: "Overhead Press", sets: 3, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Lat Pulldown", sets: 3, low: 10, high: 12, equip: "machine", group: "pull", cat: "compound" },
+        { name: "Lateral Raise", sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
       ]},
-      { id:"l1", name:"Lower A", exercises:[
-        { name:"Back Squat", sets:4, low:5, high:8, equip:"barbell", group:"legs", cat:"compound", ss:"" },
-        { name:"Romanian Deadlift", sets:3, low:6, high:10, equip:"barbell", group:"legs", cat:"compound", ss:"" },
-        { name:"Leg Press", sets:3, low:10, high:15, equip:"machine", group:"legs", cat:"compound", ss:"" },
-        { name:"Calf Raise", sets:3, low:12, high:20, equip:"machine", group:"legs", cat:"isolation", ss:"" },
+      { id: uid(), name: "Lower", exercises: [
+        { name: "Back Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Romanian Deadlift", sets: 3, low: 6, high: 10, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Leg Press", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "compound" },
+        { name: "Leg Curl", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+        { name: "Calf Raise", sets: 3, low: 12, high: 20, equip: "machine", group: "legs", cat: "isolation" },
       ]},
-      { id:"u2", name:"Upper B", exercises:[
-        { name:"Incline DB Press", sets:4, low:8, high:12, equip:"dumbbell", group:"push", cat:"compound", ss:"" },
-        { name:"Chest Supported Row", sets:3, low:8, high:12, equip:"machine", group:"pull", cat:"compound", ss:"" },
-        { name:"Seated OHP (Smith)", sets:3, low:8, high:12, equip:"smith", group:"push", cat:"compound", ss:"" },
-        { name:"Pulldown (Neutral)", sets:3, low:10, high:12, equip:"machine", group:"pull", cat:"compound", ss:"" },
-        { name:"Cable Curl", sets:3, low:10, high:15, equip:"cable", group:"pull", cat:"isolation", ss:"" },
-      ]},
-      { id:"l2", name:"Lower B", exercises:[
-        { name:"Front Squat", sets:3, low:5, high:8, equip:"barbell", group:"legs", cat:"compound", ss:"" },
-        { name:"Hip Thrust", sets:3, low:8, high:12, equip:"barbell", group:"legs", cat:"compound", ss:"" },
-        { name:"Leg Extension", sets:3, low:12, high:15, equip:"machine", group:"legs", cat:"isolation", ss:"" },
-        { name:"Seated Calf Raise", sets:3, low:12, high:20, equip:"machine", group:"legs", cat:"isolation", ss:"" },
-      ]},
+      { id: uid(), name: "Rest / Active Recovery", exercises: [] }
     ]
   },
   {
-    id:"ppl-6d", name:"PPL • 6d", days:[
-      { id:"pA", name:"Push A", exercises:[
-        { name:"Bench Press", sets:4, low:5, high:8, equip:"barbell", group:"push", cat:"compound", ss:"" },
-        { name:"Incline DB Press", sets:3, low:8, high:12, equip:"dumbbell", group:"push", cat:"compound", ss:"" },
-        { name:"Lateral Raise", sets:3, low:12, high:20, equip:"dumbbell", group:"push", cat:"isolation", ss:"" },
+    id: "ppl-6d",
+    name: "PPL (6 days)",
+    days: [
+      { id: uid(), name: "Push A", exercises: [
+        { name: "Barbell Bench Press", sets: 4, low: 5, high: 8, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Incline DB Press", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+        { name: "Overhead Press (Smith)", sets: 3, low: 6, high: 10, equip: "smith", group: "push", cat: "compound" },
+        { name: "Lateral Raise", sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
       ]},
-      { id:"plA", name:"Pull A", exercises:[
-        { name:"Weighted Pull-up", sets:4, low:5, high:8, equip:"bodyweight", group:"pull", cat:"compound", ss:"" },
-        { name:"Chest-Supported Row", sets:3, low:8, high:12, equip:"machine", group:"pull", cat:"compound", ss:"" },
-        { name:"Cable Curl", sets:3, low:10, high:15, equip:"cable", group:"pull", cat:"isolation", ss:"" },
+      { id: uid(), name: "Pull A", exercises: [
+        { name: "Weighted Pull-up", sets: 4, low: 5, high: 8, equip: "bodyweight", group: "pull", cat: "compound" },
+        { name: "Barbell Row", sets: 3, low: 6, high: 10, equip: "barbell", group: "pull", cat: "compound" },
+        { name: "Lat Pulldown", sets: 3, low: 10, high: 12, equip: "machine", group: "pull", cat: "compound" },
+        { name: "Face Pull", sets: 3, low: 12, high: 20, equip: "cable", group: "pull", cat: "isolation" },
       ]},
-      { id:"lA", name:"Legs A", exercises:[
-        { name:"Back Squat", sets:4, low:5, high:8, equip:"barbell", group:"legs", cat:"compound", ss:"" },
-        { name:"Romanian Deadlift", sets:3, low:6, high:10, equip:"barbell", group:"legs", cat:"compound", ss:"" },
-        { name:"Calf Raise", sets:3, low:12, high:20, equip:"machine", group:"legs", cat:"isolation", ss:"" },
+      { id: uid(), name: "Legs A", exercises: [
+        { name: "Back Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Romanian Deadlift", sets: 3, low: 6, high: 10, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Leg Press", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "compound" },
+        { name: "Leg Curl", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
       ]},
-      { id:"pB", name:"Push B", exercises:[
-        { name:"Incline Bench Press", sets:4, low:6, high:10, equip:"barbell", group:"push", cat:"compound", ss:"" },
-        { name:"Dips", sets:3, low:6, high:10, equip:"bodyweight", group:"push", cat:"compound", ss:"" },
-        { name:"Cable Lateral Raise", sets:3, low:12, high:20, equip:"cable", group:"push", cat:"isolation", ss:"" },
+      { id: uid(), name: "Push B", exercises: [
+        { name: "Incline Bench Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Seated DB Shoulder Press", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+        { name: "Cable Lateral Raise", sets: 3, low: 12, high: 20, equip: "cable", group: "push", cat: "isolation" },
       ]},
-      { id:"plB", name:"Pull B", exercises:[
-        { name:"Barbell Row", sets:3, low:6, high:10, equip:"barbell", group:"pull", cat:"compound", ss:"" },
-        { name:"Lat Pulldown", sets:3, low:8, high:12, equip:"machine", group:"pull", cat:"compound", ss:"" },
-        { name:"Face Pull", sets:3, low:12, high:20, equip:"cable", group:"pull", cat:"isolation", ss:"" },
+      { id: uid(), name: "Pull B", exercises: [
+        { name: "Deadlift (RPE 7)", sets: 3, low: 3, high: 5, equip: "barbell", group: "pull", cat: "compound" },
+        { name: "Chest-Supported Row", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+        { name: "EZ Bar Curl", sets: 3, low: 8, high: 12, equip: "barbell", group: "pull", cat: "isolation" },
       ]},
-      { id:"lB", name:"Legs B", exercises:[
-        { name:"Front Squat", sets:3, low:6, high:10, equip:"barbell", group:"legs", cat:"compound", ss:"" },
-        { name:"Leg Curl", sets:3, low:10, high:15, equip:"machine", group:"legs", cat:"isolation", ss:"" },
-        { name:"Seated Calf Raise", sets:3, low:12, high:20, equip:"machine", group:"legs", cat:"isolation", ss:"" },
+      { id: uid(), name: "Legs B", exercises: [
+        { name: "Front Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Hip Thrust", sets: 3, low: 8, high: 12, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Leg Extension", sets: 3, low: 12, high: 15, equip: "machine", group: "legs", cat: "isolation" },
       ]},
-    ]
+    ],
   },
   {
-    id:"arnold-6d",
-    name:"Arnold Split • 6d",
-    days:[
-      { id:"a1", name:"Chest + Back", exercises:[
-        { name:"Incline Bench Press", sets:4, low:6, high:10, equip:"barbell", group:"push", cat:"compound", ss:"" },
-        { name:"Barbell Row", sets:4, low:6, high:10, equip:"barbell", group:"pull", cat:"compound", ss:"" },
-        { name:"DB Fly", sets:3, low:10, high:15, equip:"dumbbell", group:"push", cat:"isolation", ss:"" },
+    id: "arnold-6d",
+    name: "Arnold (C/B • S/A • Legs x2)",
+    days: [
+      { id: uid(), name: "Chest + Back", exercises: [
+        { name: "Incline Bench Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Pull-up / Pulldown", sets: 4, low: 6, high: 10, equip: "machine", group: "pull", cat: "compound" },
+        { name: "DB Fly", sets: 3, low: 10, high: 15, equip: "dumbbell", group: "push", cat: "isolation" },
+        { name: "Barbell Row", sets: 3, low: 6, high: 10, equip: "barbell", group: "pull", cat: "compound" },
       ]},
-      { id:"a2", name:"Shoulders + Arms", exercises:[
-        { name:"Overhead Press", sets:4, low:6, high:10, equip:"barbell", group:"push", cat:"compound", ss:"" },
-        { name:"Lateral Raise", sets:4, low:12, high:20, equip:"dumbbell", group:"push", cat:"isolation", ss:"" },
-        { name:"EZ Curl", sets:3, low:8, high:12, equip:"barbell", group:"pull", cat:"isolation", ss:"" },
+      { id: uid(), name: "Shoulders + Arms", exercises: [
+        { name: "Overhead Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Lateral Raise", sets: 4, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+        { name: "EZ Curl", sets: 3, low: 8, high: 12, equip: "barbell", group: "pull", cat: "isolation" },
+        { name: "Cable Pushdown", sets: 3, low: 10, high: 15, equip: "cable", group: "push", cat: "isolation" },
       ]},
-      { id:"a3", name:"Legs", exercises:[
-        { name:"Back Squat", sets:4, low:5, high:8, equip:"barbell", group:"legs", cat:"compound", ss:"" },
-        { name:"Leg Press", sets:3, low:10, high:15, equip:"machine", group:"legs", cat:"compound", ss:"" },
-        { name:"Standing Calf", sets:4, low:12, high:20, equip:"machine", group:"legs", cat:"isolation", ss:"" },
+      { id: uid(), name: "Legs", exercises: [
+        { name: "Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Leg Press", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "compound" },
+        { name: "Leg Curl", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+        { name: "Standing Calf", sets: 4, low: 12, high: 20, equip: "machine", group: "legs", cat: "isolation" },
       ]},
-    ]
+    ],
   },
   {
-    id:"fb-3d",
-    name:"Full Body • 3d",
-    days:[
-      { id:"f1", name:"Full 1", exercises:[
-        { name:"Squat", sets:3, low:5, high:8, equip:"barbell", group:"legs", cat:"compound", ss:"" },
-        { name:"Bench Press", sets:3, low:6, high:10, equip:"barbell", group:"push", cat:"compound", ss:"" },
-        { name:"Pull-up", sets:3, low:6, high:10, equip:"bodyweight", group:"pull", cat:"compound", ss:"" },
+    id: "fb-3d",
+    name: "Full Body (3 days)",
+    days: [
+      { id: uid(), name: "Full 1", exercises: [
+        { name: "Squat", sets: 3, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Bench Press", sets: 3, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Pull-up", sets: 3, low: 6, high: 10, equip: "bodyweight", group: "pull", cat: "compound" },
       ]},
-      { id:"f2", name:"Full 2", exercises:[
-        { name:"Deadlift", sets:2, low:3, high:5, equip:"barbell", group:"pull", cat:"compound", ss:"" },
-        { name:"Incline DB Press", sets:3, low:8, high:12, equip:"dumbbell", group:"push", cat:"compound", ss:"" },
-        { name:"Row (Machine)", sets:3, low:8, high:12, equip:"machine", group:"pull", cat:"compound", ss:"" },
+      { id: uid(), name: "Full 2", exercises: [
+        { name: "Deadlift", sets: 2, low: 3, high: 5, equip: "barbell", group: "pull", cat: "compound" },
+        { name: "Incline DB Press", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+        { name: "Row (Machine)", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
       ]},
-      { id:"f3", name:"Full 3", exercises:[
-        { name:"Front Squat", sets:3, low:5, high:8, equip:"barbell", group:"legs", cat:"compound", ss:"" },
-        { name:"Overhead Press", sets:3, low:6, high:10, equip:"barbell", group:"push", cat:"compound", ss:"" },
-        { name:"Lat Pulldown", sets:3, low:10, high:12, equip:"machine", group:"pull", cat:"compound", ss:"" },
+      { id: uid(), name: "Full 3", exercises: [
+        { name: "Front Squat", sets: 3, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Overhead Press", sets: 3, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Lat Pulldown", sets: 3, low: 10, high: 12, equip: "machine", group: "pull", cat: "compound" },
       ]},
-    ]
-  }
+    ],
+  },
 ];
 
 // ---------- login screen ----------
@@ -168,6 +170,7 @@ function LoginScreen() {
       setError(e.message || "Could not sign in.");
     }
   }
+
   async function doSignUp() {
     setError("");
     try {
@@ -185,13 +188,15 @@ function LoginScreen() {
       <div className="w-[96%] max-w-md glass-strong p-5">
         <h1 className="text-3xl font-extrabold text-center">SetForge</h1>
         <p className="text-center text-neutral-400">Sign in to get started</p>
+
         <div className="mt-4 grid gap-2">
           <input className="input" placeholder="Email" value={email} onChange={(e)=>setEmail(e.target.value)} type="email" />
           <input className="input" placeholder="Password" value={pass} onChange={(e)=>setPass(e.target.value)} type="password" />
-          {mode === "signin" && (<button className="btn-primary" onClick={doSignIn}>Sign in</button>)}
-          {mode === "signup" && (<button className="btn-primary" onClick={doSignUp}>Create account</button>)}
-          <div className="text-xs text-neutral-400 text-center">Email verification required. Firebase Auth.</div>
+          {mode === "signin" && <button className="btn-primary" onClick={doSignIn}>Sign in</button>}
+          {mode === "signup" && <button className="btn-primary" onClick={doSignUp}>Create account</button>}
+          <div className="text-xs text-neutral-400 text-center">Email verification required. We use Firebase Auth.</div>
         </div>
+
         <div className="mt-3 text-center">
           {mode === "signin" ? (
             <button className="btn" onClick={() => setMode("signup")}>No account? Sign up</button>
@@ -199,26 +204,9 @@ function LoginScreen() {
             <button className="btn" onClick={() => setMode("signin")}>Have an account? Sign in</button>
           )}
         </div>
-        {!!error && <div className="mt-3 text-sm text-red-400">{error}</div>}
-        {mode === "verifySent" && (
-          <div className="mt-3 text-sm text-emerald-400">Verification email sent. Verify, then sign in again.</div>
-        )}
-      </div>
-    </div>
-  );
-}
 
-// ---------- simple modal ----------
-function Modal({ open, onClose, children, title = "Note" }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-3">
-      <div className="w-full max-w-lg rounded-2xl bg-neutral-900 border border-neutral-700 p-4">
-        <div className="flex items-center justify-between">
-          <div className="font-semibold">{title}</div>
-          <button className="btn" onClick={onClose}>Close</button>
-        </div>
-        <div className="mt-3 text-sm">{children}</div>
+        {!!error && <div className="mt-3 text-sm text-red-400">{error}</div>}
+        {mode === "verifySent" && <div className="mt-3 text-sm text-emerald-400">Verification email sent. Verify, then sign in again.</div>}
       </div>
     </div>
   );
@@ -229,29 +217,18 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState(null);
 
-  const [tab, setTab] = useLocalState("sf.tab", "log");
-  const [units, setUnits] = useLocalState("sf.units", "lb");
-  const [split, setSplit] = useLocalState("sf.split", null);
-  const [sessions, setSessions] = useLocalState("sf.sessions", []);
-  const [work, setWork] = useLocalState("sf.work", null);
+  const [tab, setTab] = useLocalState("sf.tab", "log"); // "log" | "split" | "sessions" | "coach"
+  const [units, setUnits] = useLocalState("sf.units", "lb"); // lb | kg
+
+  // split and sessions
+  const [split, setSplit] = useLocalState("sf.split", null); // {name, days[]}
+  const [sessions, setSessions] = useLocalState("sf.sessions", []); // [{id,date,dayName,entries:[]}]
+  const [work, setWork] = useLocalState("sf.work", null); // current in-progress session
 
   const [showImporter, setShowImporter] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
 
-  // compact mode toggle
-  const [compact, setCompact] = useLocalState("sf.compact", true);
-
-  // resume banner / draft from cloud
-  const [resumeDraft, setResumeDraft] = useState(null);
-
-  // AI session note modal
-  const [noteOpen, setNoteOpen] = useState(false);
-  const [noteText, setNoteText] = useState("");
-
-  // local UI state
-  const [busySave, setBusySave] = useState(false);
-
-  // auth & firestore subscription
+  // ---- Auth wiring ----
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u || null);
@@ -260,205 +237,97 @@ export default function App() {
     return unsub;
   }, []);
 
+  // ---- mobile compact mode toggle (adds .compact to <body>) ----
   useEffect(() => {
-    if (!user) return;
-    const unsub = subscribeUserState(user.uid, ({ split: s, sessions: ss, workDraft }) => {
-      if (s) setSplit(s);
-      if (Array.isArray(ss) && ss.length) setSessions(ss);
-      if (workDraft && !work) setResumeDraft(workDraft);
-    });
-    return unsub;
-  }, [user]); // eslint-disable-line
-
-  // debounced cloud sync for split/sessions
-  useEffect(() => {
-    if (!user) return;
-    const t = setTimeout(() => { saveSplit(user.uid, split || null).catch(()=>{}); }, 600);
-    return () => clearTimeout(t);
-  }, [user, split]);
-  useEffect(() => {
-    if (!user) return;
-    const t = setTimeout(() => { saveSessions(user.uid, sessions || [] ).catch(()=>{}); }, 600);
-    return () => clearTimeout(t);
-  }, [user, sessions]);
-
-  // AUTO-SAVE WORK DRAFT (every 10s)
-  const lastDraftRef = useRef("");
-  useEffect(() => {
-    if (!user) return;
-    const id = setInterval(() => {
-      if (!work) return;
-      const payload = { ...work, units };
-      const ser = JSON.stringify(payload);
-      if (ser !== lastDraftRef.current) {
-        lastDraftRef.current = ser;
-        saveWorkDraft(user.uid, payload).catch(()=>{});
-      }
-    }, 10000);
-    return () => clearInterval(id);
-  }, [user, work, units]);
-
-  function applyResume() {
-    if (!resumeDraft) return;
-    setWork(resumeDraft);
-    setResumeDraft(null);
-  }
-  async function discardResume() {
-    setResumeDraft(null);
-    if (user) await clearWorkDraft(user.uid).catch(()=>{});
-  }
+    const apply = () => {
+      const small = window.innerWidth <= 430;
+      document.body.classList.toggle("compact", !!small);
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, []);
 
   async function signOut() {
     try { await fbSignOut(auth); } catch {}
     window.location.replace(window.location.origin + window.location.pathname);
   }
 
+  // ---- Defensive shape checks to avoid crashes on Log tab ----
+  useEffect(() => {
+    if (split && !Array.isArray(split?.days)) {
+      console.warn("Invalid split shape, clearing.");
+      setSplit(null);
+    }
+  }, [split, setSplit]);
+
   // ----- logging helpers -----
   function startWorkoutFor(dayIdx) {
-    if (!split) return;
+    if (!split || !Array.isArray(split.days)) return;
     const day = split.days[dayIdx];
-    const entries = [];
-    day.exercises.forEach((ex) => {
-      const sets = Array.from({ length: ex.sets || 3 }, () => ({ weight: "", reps: "", fail: false, rir:null, tempo:"" }));
-      entries.push({ name: ex.name, low: ex.low || 8, high: ex.high || 12, sets, ss: ex.ss || "", equip: ex.equip || "", group: ex.group || "", cat: ex.cat || "compound" });
+    if (!day) return;
+    const entries = (day.exercises || []).map((ex) => {
+      const sets = Array.from({ length: Number(ex.sets || 3) }, () => ({ weight: "", reps: "", fail: false }));
+      return { name: ex.name || "Exercise", low: ex.low ?? 8, high: ex.high ?? 12, sets };
     });
-    setWork({ id: uid(), date: todayISO(), dayName: day.name, entries });
+    setWork({ id: uid(), date: todayISO(), dayName: day.name || `Day ${dayIdx+1}`, entries });
   }
 
-  async function saveWorkout() {
-    if (!work) return;
-    setBusySave(true);
-    try {
-      const newSessions = [{ ...work }, ...sessions].slice(0, 200);
-      setSessions(newSessions);
-      setWork(null);
-      if (user) await clearWorkDraft(user.uid).catch(()=>{});
-      try {
-        const recent = newSessions.slice(1, 6);
-        const advice = await aiCoachNote(newSessions[0], recent, units, work?.dayName || "");
-        if (advice) { setNoteText(advice); setNoteOpen(true); }
-      } catch {}
-      alert("Session saved.");
-    } finally {
-      setBusySave(false);
-    }
+  function saveWorkout() {
+    if (!work || !Array.isArray(work?.entries)) return;
+    setSessions([{ ...work }, ...sessions].slice(0, 200));
+    setWork(null);
+    alert("Session saved.");
   }
 
   function discardWorkout() {
-    if (confirm("Discard current session?")) {
-      setWork(null);
-      if (user) clearWorkDraft(user.uid).catch(()=>{});
-    }
+    if (confirm("Discard current session?")) setWork(null);
   }
 
+  // ---- split helpers ----
   function applyTemplate(t) {
     if (split && !confirm("You already have a split. Overwrite it?")) return;
-    const days = t.days.map((d) => ({
+    const days = (t.days || []).map((d) => ({
       id: uid(),
-      name: d.name,
-      exercises: d.exercises.map((x) => ({ ...x })),
+      name: d.name || "DAY",
+      exercises: (d.exercises || []).map((x) => ({ ...x })),
     }));
-    const next = { name: t.name, days };
-    setSplit(next);
+    setSplit({ name: t.name, days });
     setShowTemplates(false);
     setTab("log");
   }
 
   function onImportConfirm(payload) {
+    if (!payload || !Array.isArray(payload?.days)) {
+      alert("Import failed. Try a simpler paste or a different file.");
+      return;
+    }
     if (split && !confirm("You already have a split. Overwrite it?")) return;
-    setSplit(payload);
+    setSplit({ name: payload.name || "Imported Split", days: payload.days });
     setShowImporter(false);
     setTab("log");
   }
 
-  // Gather history for an exercise
-  function getHistory(name) {
-    const hist = [];
-    for (const s of sessions) {
-      for (const e of s.entries) {
-        if (e.name === name) {
-          hist.push({
-            date: s.date,
-            sets: e.sets.map(x => ({ weight: x.weight, reps: x.reps, fail: !!x.fail, rir: x.rir ?? null })),
-            target: { low: e.low, high: e.high }
-          });
-        }
-      }
-      if (hist.length >= 6) break;
-    }
-    return hist;
-  }
-
-  // Render groups with superset pairing (ss same id)
-  function renderEntriesGrouped() {
-    const list = work.entries;
-    const blocks = [];
-    for (let i = 0; i < list.length; i++) {
-      const a = list[i];
-      const b = list[i+1];
-      if (a.ss && b && b.ss && a.ss === b.ss) {
-        blocks.push({ type: "ss", aIndex: i, bIndex: i+1 });
-        i++;
-      } else {
-        blocks.push({ type: "solo", aIndex: i });
-      }
-    }
-    return blocks;
-  }
-
-  // Attach AI note to the most recent session
-  function attachNoteToLast() {
-    if (!noteText) return;
-    const copy = [...sessions];
-    if (!copy.length) return;
-    copy[0] = { ...copy[0], note: noteText };
-    setSessions(copy);
-    setNoteOpen(false);
-  }
-
-  // Export data
-  function exportJSON() {
-    const data = JSON.stringify({ split, sessions }, null, 2);
-    const blob = new Blob([data], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "setforge-export.json"; a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  // Compact mode class
-  useEffect(() => {
-    document.documentElement.classList.toggle("compact", !!compact);
-  }, [compact]);
+  // --------------------------------------------------
+  // RENDER
+  // --------------------------------------------------
 
   if (!authReady) return <div className="min-h-screen grid place-items-center text-neutral-400">Loading…</div>;
   if (!user) return <LoginScreen />;
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] safe-px safe-pt safe-pb">
-      {resumeDraft && !work && tab === "log" && (
-        <div className="banner">
-          <div>
-            Resume in-progress session — <strong>{resumeDraft.dayName}</strong> ({resumeDraft.date})
-          </div>
-          <div className="flex gap-2">
-            <button className="btn-primary" onClick={applyResume}>Resume</button>
-            <button className="btn" onClick={discardResume}>Discard</button>
-          </div>
-        </div>
-      )}
-
       {/* top bar */}
-      <header className="flex items-center gap-2 sm:gap-3 justify-between py-2 sm:py-3 sticky top-0 z-30 bg-[var(--bg)]">
-        <div className="text-xl sm:text-2xl font-extrabold">SetForge</div>
+      <header className="flex items-center gap-3 justify-between py-3">
+        <div className="text-2xl font-extrabold">SetForge</div>
 
-        <nav className="flex gap-1 sm:gap-2">
+        <nav className="flex gap-2">
           {["log", "split", "sessions", "coach"].map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={
-                "px-3 sm:px-4 py-2 rounded-xl border " +
+                "px-4 py-2 rounded-xl border " +
                 (tab === t ? "bg-neutral-800 border-neutral-700" : "bg-neutral-900 border-neutral-800")
               }
             >
@@ -472,250 +341,148 @@ export default function App() {
             <button onClick={() => setUnits("lb")} className={"px-2 py-1 rounded " + (units === "lb" ? "bg-neutral-700" : "")}>lb</button>
             <button onClick={() => setUnits("kg")} className={"px-2 py-1 rounded " + (units === "kg" ? "bg-neutral-700" : "")}>kg</button>
           </div>
-          <label className="pill cursor-pointer">
-            <input type="checkbox" className="mr-1" checked={!!compact} onChange={(e)=>setCompact(e.target.checked)} />
-            compact
-          </label>
           <button className="btn" onClick={signOut}>Sign out</button>
         </div>
       </header>
 
       <main className="mt-2">
+        {/* LOG */}
         {tab === "log" && (
           <section className="grid gap-4">
             <h2 className="text-xl font-semibold">Log</h2>
 
-            {!split ? (
-              <div className="text-neutral-400">Import a split first, then you can log your session here.</div>
+            {!split || !Array.isArray(split.days) || split.days.length === 0 ? (
+              <div className="text-neutral-400">
+                Import a split first, then you can log your session here.
+              </div>
             ) : !work ? (
               <div className="grid items-start gap-3 max-w-2xl">
                 <div className="pill">Choose day to log</div>
                 <div className="grid gap-2">
                   {split.days.map((d, i) => (
-                    <button key={d.id} className="btn" onClick={() => { setWork(null); startWorkoutFor(i); }}>
-                      Start — {d.name}
+                    <button
+                      key={d.id ?? i}
+                      className="btn"
+                      onClick={() => {
+                        try {
+                          startWorkoutFor(i);
+                        } catch (e) {
+                          console.error("startWorkoutFor error", e);
+                          alert("Could not start session. Try another day or re-import your split.");
+                        }
+                      }}
+                    >
+                      Start — {d?.name ?? `Day ${i + 1}`}
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <>
-                <div className="grid gap-4 max-w-3xl">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold">{work.dayName} — {work.date}</h3>
+              <div className="grid gap-4 max-w-3xl">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">{work?.dayName ?? "Session"} — {work?.date ?? todayISO()}</h3>
+                  <div className="flex gap-2">
+                    <button className="btn" onClick={discardWorkout}>Discard</button>
+                    <button className="btn-primary" onClick={saveWorkout}>Save session</button>
                   </div>
+                </div>
 
-                  {/* grouped render */}
-                  <div className="grid gap-3">
-                    {renderEntriesGrouped().map((blk, k) => {
-                      const renderSetRow = (entryIndex, labelPrefix="") => (s, si) => (
-                        <div key={si} className="flex items-center gap-2">
-                          <span className="text-xs text-neutral-400 w-10">{labelPrefix}{si + 1}</span>
-                          <input
-                            className="input w-24"
-                            placeholder={`wt (${units})`}
-                            value={s.weight}
-                            onChange={(ev) => {
-                              const next = structuredClone(work);
-                              next.entries[entryIndex].sets[si].weight = ev.target.value;
-                              setWork(next);
-                            }}
-                          />
-                          <input
-                            className="input w-20"
-                            placeholder="reps"
-                            value={s.reps}
-                            onChange={(ev) => {
-                              const next = structuredClone(work);
-                              next.entries[entryIndex].sets[si].reps = ev.target.value;
-                              setWork(next);
-                            }}
-                          />
-                          <label className="flex items-center gap-1 text-xs">
+                <div className="grid gap-3">
+                  {(work?.entries ?? []).map((e, ei) => (
+                    <div key={ei} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
+                      <div className="font-semibold">
+                        {e?.name ?? "Exercise"} <span className="text-neutral-400 text-sm">({e?.low ?? 8}–{e?.high ?? 12} reps)</span>
+                      </div>
+
+                      {/* Describe + Suggest + Warmup + Rest small actions */}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {/* Describe */}
+                        <AsyncButton
+                          label="Describe"
+                          onClick={async () => {
+                            const text = await aiDescribe({ name: e?.name || "" });
+                            if (text) alert(text);
+                          }}
+                        />
+                        {/* Suggest next */}
+                        <AsyncButton
+                          label="Suggest"
+                          onClick={async () => {
+                            const advice = await aiSuggestNext({ name: e?.name || "", units, history: [], targetLow: e?.low ?? 8, targetHigh: e?.high ?? 12 });
+                            if (advice?.next?.note) alert(advice.next.note);
+                          }}
+                        />
+                        {/* Warmup */}
+                        <AsyncButton
+                          label="Warm-up"
+                          onClick={async () => {
+                            const plan = await aiWarmupPlan({ name: e?.name || "", units });
+                            if (plan?.text) alert(plan.text);
+                          }}
+                        />
+                        {/* Rest */}
+                        <AsyncButton
+                          label="Rest"
+                          onClick={async () => {
+                            const r = await aiRest({ name: e?.name || "" });
+                            if (r?.text) alert(r.text);
+                          }}
+                        />
+                      </div>
+
+                      <div className="mt-2 grid gap-2">
+                        {(e?.sets ?? []).map((s, si) => (
+                          <div key={si} className="flex items-center gap-2">
+                            <span className="text-xs text-neutral-400 w-10">Set {si + 1}</span>
                             <input
-                              type="checkbox"
-                              checked={s.fail}
+                              className="input w-24"
+                              placeholder={`wt (${units})`}
+                              value={s?.weight ?? ""}
                               onChange={(ev) => {
                                 const next = structuredClone(work);
-                                next.entries[entryIndex].sets[si].fail = ev.target.checked;
+                                next.entries[ei].sets[si].weight = ev.target.value;
                                 setWork(next);
                               }}
                             />
-                            F
-                          </label>
-
-                          {/* Optional extras collapsed by default */}
-                          <details className="ml-2">
-                            <summary className="text-xs text-neutral-400 cursor-pointer">more</summary>
-                            <div className="mt-2 flex items-center gap-2">
+                            <input
+                              className="input w-20"
+                              placeholder="reps"
+                              value={s?.reps ?? ""}
+                              onChange={(ev) => {
+                                const next = structuredClone(work);
+                                next.entries[ei].sets[si].reps = ev.target.value;
+                                setWork(next);
+                              }}
+                            />
+                            <label className="flex items-center gap-1 text-xs">
                               <input
-                                className="input w-16"
-                                placeholder="RIR"
-                                value={s.rir ?? ""}
+                                type="checkbox"
+                                checked={!!s?.fail}
                                 onChange={(ev) => {
                                   const next = structuredClone(work);
-                                  const v = ev.target.value.trim();
-                                  next.entries[entryIndex].sets[si].rir = v === "" ? null : Number(v);
+                                  next.entries[ei].sets[si].fail = ev.target.checked;
                                   setWork(next);
                                 }}
                               />
-                              <input
-                                className="input w-20"
-                                placeholder="tempo"
-                                value={s.tempo ?? ""}
-                                onChange={(ev) => {
-                                  const next = structuredClone(work);
-                                  next.entries[entryIndex].sets[si].tempo = ev.target.value;
-                                  setWork(next);
-                                }}
-                              />
-                            </div>
-                          </details>
-                        </div>
-                      );
-
-                      if (blk.type === "solo") {
-                        const e = work.entries[blk.aIndex];
-                        const [suggestBusy, setSuggestBusy] = useState(false);
-                        const [restBusy, setRestBusy] = useState(false);
-                        const [descBusy, setDescBusy] = useState(false);
-                        const [suggestLine, setSuggestLine] = useState("");
-                        const [suggestWhy, setSuggestWhy] = useState("");
-                        const [restSec, setRestSec] = useState(null);
-                        const [warmups, setWarmups] = useState([]);
-                        const [descText, setDescText] = useState("");
-
-                        // tiny inline component to call AI (hooks per block)
-                        function Controls() {
-                          async function doSuggest() {
-                            setSuggestBusy(true);
-                            try {
-                              const hist = getHistory(e.name);
-                              const rirHistory = hist.flatMap(h => h.sets.map(s => s.rir).filter(v => v !== null));
-                              const failureFlags = hist.flatMap(h => h.sets.map(s => !!s.fail));
-                              const next = await aiSuggestNext({
-                                name: e.name,
-                                history: hist,
-                                targetLow: e.low,
-                                targetHigh: e.high,
-                                units,
-                                bodyweight: (e.equip === "bodyweight"),
-                                rirHistory,
-                                failureFlags
-                              });
-                              const arrow = next.decision === "up" ? "↑" : next.decision === "down" ? "↓" : "→";
-                              const line = `${arrow} ${next.weight ?? "—"}${next.weight==null?"":units}`;
-                              setSuggestLine(line);
-                              setSuggestWhy(next.note || "");
-                            } finally { setSuggestBusy(false); }
-                          }
-                          async function doRest() {
-                            setRestBusy(true);
-                            try {
-                              const lastSet = e.sets[e.sets.length-1] || {};
-                              const hist = getHistory(e.name);
-                              const sec = await aiRestSuggest({ name: e.name, lastSet, intensity:{ targetLow:e.low, targetHigh:e.high }, history: hist });
-                              setRestSec(sec);
-                            } finally { setRestBusy(false); }
-                          }
-                          async function doWarmup() {
-                            const working = Number(
-                              [...e.sets].reverse().find(s => s.weight)?.weight || 0
-                            ) || 0;
-                            const hist = getHistory(e.name);
-                            const tops = hist.map(h => Math.max(...h.sets.map(s => Number(s.weight||0))));
-                            try {
-                              const plan = await aiWarmupPlan({ name: e.name, workingWeight: working, units, recentTops: tops });
-                              setWarmups(plan || []);
-                            } catch {}
-                          }
-                          async function doDescribe() {
-                            setDescBusy(true);
-                            try {
-                              const text = await aiDescribe({ name: e.name, equip: e.equip || "machine", cat: e.cat?.includes("compound")?"compound":"iso_small" });
-                              setDescText(text || "");
-                            } finally { setDescBusy(false); }
-                          }
-
-                          return (
-                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                              <SpinnerButton className="btn" loading={suggestBusy} onClick={doSuggest}>Suggest</SpinnerButton>
-                              <SpinnerButton className="btn" loading={restBusy} onClick={doRest}>Rest</SpinnerButton>
-                              <button className="btn" onClick={doWarmup}>Warm-ups</button>
-                              <SpinnerButton className="btn" loading={descBusy} onClick={doDescribe}>Describe</SpinnerButton>
-                              {!!suggestLine && (
-                                <>
-                                  <span className="pill">{suggestLine}</span>
-                                  {suggestWhy ? <details><summary className="text-xs text-neutral-400 cursor-pointer">why?</summary><div className="text-xs text-neutral-300 mt-1">{suggestWhy}</div></details> : null}
-                                </>
-                              )}
-                              {restSec ? <span className="pill">~{restSec}s</span> : null}
-                            </div>
-                          );
-                        }
-
-                        return (
-                          <div key={k} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
-                            <div className="font-semibold">
-                              {e.name} <span className="text-neutral-400 text-sm">({e.low}–{e.high} reps)</span>
-                              {e.ss && <span className="ml-2 text-xs pill">Superset</span>}
-                            </div>
-                            <div className="mt-2 grid gap-2">
-                              {e.sets.map(renderSetRow(blk.aIndex))}
-                            </div>
-                            <Controls />
-                            { /* Warmups list */ }
-                            {/* render warmups if present */}
-                            {/* (kept inline to keep code compact) */}
+                              to failure
+                            </label>
                           </div>
-                        );
-                      } else {
-                        // Superset block
-                        const a = work.entries[blk.aIndex];
-                        const b = work.entries[blk.bIndex];
-                        const maxSets = Math.max(a.sets.length, b.sets.length);
-
-                        return (
-                          <div key={k} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
-                            <div className="font-semibold flex items-center gap-3">
-                              <span>{a.name}</span>
-                              <span className="text-xs pill">Superset</span>
-                              <span className="opacity-60">×</span>
-                              <span>{b.name}</span>
-                            </div>
-                            <div className="mt-2 grid gap-2">
-                              {Array.from({ length: maxSets }).map((_, si) => (
-                                <div key={si} className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                  {renderSetRow(blk.aIndex, "A")(a.sets[si] || { weight:"", reps:"", fail:false, rir:null, tempo:"" }, si)}
-                                  {renderSetRow(blk.bIndex, "B")(b.sets[si] || { weight:"", reps:"", fail:false, rir:null, tempo:"" }, si)}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      }
-                    })}
-                  </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-
-                {/* sticky bottom action bar for mobile */}
-                <div className="bottombar">
-                  <div className="flex items-center gap-2">
-                    <SpinnerButton className="btn-primary" loading={busySave} onClick={saveWorkout}>Save</SpinnerButton>
-                    <button className="btn" onClick={discardWorkout}>Discard</button>
-                  </div>
-                  <Timer initial={90} />
-                </div>
-              </>
+              </div>
             )}
           </section>
         )}
 
+        {/* SPLIT */}
         {tab === "split" && (
           <section className="grid gap-4">
             <h2 className="text-xl font-semibold">Split</h2>
 
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2">
               <button className="btn" onClick={() => setShowImporter(true)}>+ Import (AI)</button>
               <button className="btn" onClick={() => setShowTemplates(true)}>Templates</button>
               {split && (
@@ -731,61 +498,13 @@ export default function App() {
               <div className="grid gap-3">
                 <div className="text-neutral-400">Active split: <span className="text-white">{split.name || "My Split"}</span></div>
                 <div className="grid gap-2">
-                  {split.days.map((d, di) => (
-                    <div key={d.id} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
-                      <div className="font-semibold flex items-center gap-2">
-                        <input
-                          className="input w-full sm:w-auto"
-                          value={d.name}
-                          onChange={(e) => {
-                            const next = structuredClone(split);
-                            next.days[di].name = e.target.value;
-                            setSplit(next);
-                          }}
-                        />
-                      </div>
-                      <ul className="mt-2 grid gap-2">
-                        {d.exercises.map((x, xi) => (
-                          <li key={xi} className="rounded-lg bg-neutral-950 border border-neutral-800 p-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <input className="input flex-1" value={x.name} onChange={(e)=>{
-                                const next = structuredClone(split);
-                                next.days[di].exercises[xi].name = e.target.value; setSplit(next);
-                              }} />
-                              <input className="input w-16" value={x.sets} onChange={(e)=>{
-                                const next = structuredClone(split);
-                                next.days[di].exercises[xi].sets = Number(e.target.value||3); setSplit(next);
-                              }} />
-                              <input className="input w-16" value={x.low} onChange={(e)=>{
-                                const next = structuredClone(split);
-                                next.days[di].exercises[xi].low = Number(e.target.value||8); setSplit(next);
-                              }} />
-                              <input className="input w-16" value={x.high} onChange={(e)=>{
-                                const next = structuredClone(split);
-                                next.days[di].exercises[xi].high = Number(e.target.value||12); setSplit(next);
-                              }} />
-                              {xi > 0 && (
-                                <label className="flex items-center gap-1 text-xs">
-                                  <input
-                                    type="checkbox"
-                                    checked={!!x.ss}
-                                    onChange={(e) => {
-                                      const next = structuredClone(split);
-                                      const prev = next.days[di].exercises[xi-1];
-                                      if (e.target.checked) {
-                                        const id = prev.ss || uid();
-                                        prev.ss = id;
-                                        next.days[di].exercises[xi].ss = id;
-                                      } else {
-                                        next.days[di].exercises[xi].ss = "";
-                                      }
-                                      setSplit(next);
-                                    }}
-                                  />
-                                  Link to previous (superset)
-                                </label>
-                              )}
-                            </div>
+                  {(split.days || []).map((d, di) => (
+                    <div key={d.id ?? di} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
+                      <div className="font-semibold">{d?.name ?? `Day ${di+1}`}</div>
+                      <ul className="mt-1 text-sm text-neutral-300 list-disc pl-5">
+                        {(d.exercises || []).map((x, xi) => (
+                          <li key={xi}>
+                            {x?.name ?? "Exercise"} — {x?.sets ?? 3} × {x?.low ?? 8}–{x?.high ?? 12}
                           </li>
                         ))}
                       </ul>
@@ -795,7 +514,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Importer modal */}
             {showImporter && (
               <div className="fixed inset-0 bg-black/60 grid place-items-center p-2 z-50">
                 <div className="w-full max-w-5xl bg-neutral-950 border border-neutral-800 rounded-2xl p-3">
@@ -810,7 +528,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Templates modal */}
             {showTemplates && (
               <div className="fixed inset-0 bg-black/60 grid place-items-center p-2 z-50">
                 <div className="w-full max-w-4xl bg-neutral-950 border border-neutral-800 rounded-2xl p-3">
@@ -825,7 +542,7 @@ export default function App() {
                           <div>
                             <div className="font-semibold">{t.name}</div>
                             <div className="text-xs text-neutral-400">
-                              {t.days.length} days • {t.days.reduce((a, d) => a + d.exercises.length, 0)} exercises
+                              {(t.days || []).length} days • {(t.days || []).reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
                             </div>
                           </div>
                           <button className="btn-primary" onClick={() => applyTemplate(t)}>Use this</button>
@@ -839,28 +556,25 @@ export default function App() {
           </section>
         )}
 
+        {/* SESSIONS */}
         {tab === "sessions" && (
           <section className="grid gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Sessions</h2>
-              <button className="btn" onClick={exportJSON}>Export JSON</button>
-            </div>
-            {!sessions.length ? (
+            <h2 className="text-xl font-semibold">Sessions</h2>
+            {!Array.isArray(sessions) || !sessions.length ? (
               <div className="text-neutral-400">No sessions yet.</div>
             ) : (
               <div className="grid gap-3">
-                {sessions.map((s, idx) => (
-                  <div key={s.id || idx} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
-                    <div className="font-semibold">{s.dayName} — {s.date}</div>
-                    {s.note ? <div className="mt-2 text-sm text-neutral-300 italic">“{s.note}”</div> : null}
+                {(sessions || []).map((s, si) => (
+                  <div key={s?.id ?? si} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
+                    <div className="font-semibold">{s?.dayName ?? "Session"} — {s?.date ?? ""}</div>
                     <div className="mt-2 grid gap-1 text-sm">
-                      {s.entries.map((e, i) => (
+                      {(s?.entries || []).map((e, i) => (
                         <div key={i} className="text-neutral-300">
-                          <div className="font-medium">{e.name} {e.ss ? <span className="pill ml-2">Superset</span> : null}</div>
+                          <div className="font-medium">{e?.name ?? "Exercise"}</div>
                           <div className="text-xs text-neutral-400">
-                            {e.sets.map((x, xi) => (
+                            {(e?.sets || []).map((x, xi) => (
                               <span key={xi} className="mr-2">
-                                [{x.weight || "?"}{units} × {x.reps || "?"}{x.fail ? " F" : ""}{x.rir!=null?` r${x.rir}`:""}]
+                                [{(x?.weight ?? "?")}{units} × {(x?.reps ?? "?")}{x?.fail ? " F" : ""}]
                               </span>
                             ))}
                           </div>
@@ -874,6 +588,7 @@ export default function App() {
           </section>
         )}
 
+        {/* COACH */}
         {tab === "coach" && (
           <section className="grid gap-4">
             <h2 className="text-xl font-semibold">Coach</h2>
@@ -882,18 +597,29 @@ export default function App() {
         )}
       </main>
 
-      <footer className="mt-20 text-center text-xs text-neutral-500 pb-[90px] sm:pb-0">
-        Offline-ready • Data syncs when online
+      <footer className="mt-8 text-center text-xs text-neutral-500">
+        Works offline • Advice-only AI when online
       </footer>
-
-      {/* AI Note modal */}
-      <Modal open={noteOpen} onClose={() => setNoteOpen(false)} title="Coach note">
-        <div className="whitespace-pre-wrap">{noteText || "No note."}</div>
-        <div className="mt-3 flex justify-end gap-2">
-          <button className="btn" onClick={() => setNoteOpen(false)}>Dismiss</button>
-          <button className="btn-primary" onClick={attachNoteToLast}>Attach to latest session</button>
-        </div>
-      </Modal>
     </div>
+  );
+}
+
+/** Small reusable async button with spinner */
+function AsyncButton({ label, onClick }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      className="btn"
+      disabled={busy}
+      onClick={async () => {
+        if (busy) return;
+        setBusy(true);
+        try { await onClick?.(); }
+        catch (e) { console.error(label, e); alert(`${label} failed.`); }
+        finally { setBusy(false); }
+      }}
+    >
+      {busy ? <span className="spinner" /> : label}
+    </button>
   );
 }

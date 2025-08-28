@@ -11,7 +11,9 @@ import {
 import { subscribeUserState, saveSplit, saveSessions, saveWorkDraft, clearWorkDraft } from "./db";
 import ImporterAI from "./components/ImporterAI";
 import CoachChat from "./components/CoachChat";
-import { aiDescribe, aiSuggestNext, aiCoachNote } from "./utils/ai";
+import SpinnerButton from "./components/SpinnerButton";
+import Timer from "./components/Timer";
+import { aiDescribe, aiSuggestNext, aiRestSuggest, aiWarmupPlan, aiCoachNote } from "./utils/ai";
 
 // ---------- small localStorage helper ----------
 function useLocalState(key, initial) {
@@ -246,6 +248,9 @@ export default function App() {
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteText, setNoteText] = useState("");
 
+  // local UI state
+  const [busySave, setBusySave] = useState(false);
+
   // auth & firestore subscription
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -260,7 +265,6 @@ export default function App() {
     const unsub = subscribeUserState(user.uid, ({ split: s, sessions: ss, workDraft }) => {
       if (s) setSplit(s);
       if (Array.isArray(ss) && ss.length) setSessions(ss);
-      // If there's a remote draft and we don't currently have local work, offer resume
       if (workDraft && !work) setResumeDraft(workDraft);
     });
     return unsub;
@@ -278,7 +282,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, [user, sessions]);
 
-  // ---- AUTO-SAVE WORK DRAFT (every 10s) ----
+  // AUTO-SAVE WORK DRAFT (every 10s)
   const lastDraftRef = useRef("");
   useEffect(() => {
     if (!user) return;
@@ -294,7 +298,6 @@ export default function App() {
     return () => clearInterval(id);
   }, [user, work, units]);
 
-  // Apply / discard draft
   function applyResume() {
     if (!resumeDraft) return;
     setWork(resumeDraft);
@@ -316,32 +319,29 @@ export default function App() {
     const day = split.days[dayIdx];
     const entries = [];
     day.exercises.forEach((ex) => {
-      const sets = Array.from({ length: ex.sets || 3 }, () => ({ weight: "", reps: "", fail: false }));
-      entries.push({ name: ex.name, low: ex.low || 8, high: ex.high || 12, sets, ss: ex.ss || "" });
+      const sets = Array.from({ length: ex.sets || 3 }, () => ({ weight: "", reps: "", fail: false, rir:null, tempo:"" }));
+      entries.push({ name: ex.name, low: ex.low || 8, high: ex.high || 12, sets, ss: ex.ss || "", equip: ex.equip || "", group: ex.group || "", cat: ex.cat || "compound" });
     });
     setWork({ id: uid(), date: todayISO(), dayName: day.name, entries });
   }
 
   async function saveWorkout() {
     if (!work) return;
-    const newSessions = [{ ...work }, ...sessions].slice(0, 200);
-    setSessions(newSessions);
-    setWork(null);
-
-    // clear cloud draft
-    if (user) await clearWorkDraft(user.uid).catch(()=>{});
-
-    // fetch short AI note (non-blocking UI, then modal)
+    setBusySave(true);
     try {
-      const recent = newSessions.slice(1, 6); // last 5 excluding just-saved
-      const advice = await aiCoachNote(newSessions[0], recent, units, work?.dayName || "");
-      if (advice) {
-        setNoteText(advice);
-        setNoteOpen(true);
-      }
-    } catch {}
-
-    alert("Session saved.");
+      const newSessions = [{ ...work }, ...sessions].slice(0, 200);
+      setSessions(newSessions);
+      setWork(null);
+      if (user) await clearWorkDraft(user.uid).catch(()=>{});
+      try {
+        const recent = newSessions.slice(1, 6);
+        const advice = await aiCoachNote(newSessions[0], recent, units, work?.dayName || "");
+        if (advice) { setNoteText(advice); setNoteOpen(true); }
+      } catch {}
+      alert("Session saved.");
+    } finally {
+      setBusySave(false);
+    }
   }
 
   function discardWorkout() {
@@ -371,7 +371,25 @@ export default function App() {
     setTab("log");
   }
 
-  // ----- UI helpers for supersets (render pairs) -----
+  // Gather history for an exercise
+  function getHistory(name) {
+    const hist = [];
+    for (const s of sessions) {
+      for (const e of s.entries) {
+        if (e.name === name) {
+          hist.push({
+            date: s.date,
+            sets: e.sets.map(x => ({ weight: x.weight, reps: x.reps, fail: !!x.fail, rir: x.rir ?? null })),
+            target: { low: e.low, high: e.high }
+          });
+        }
+      }
+      if (hist.length >= 6) break;
+    }
+    return hist;
+  }
+
+  // Render groups with superset pairing (ss same id)
   function renderEntriesGrouped() {
     const list = work.entries;
     const blocks = [];
@@ -398,6 +416,16 @@ export default function App() {
     setNoteOpen(false);
   }
 
+  // Export data
+  function exportJSON() {
+    const data = JSON.stringify({ split, sessions }, null, 2);
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "setforge-export.json"; a.click();
+    URL.revokeObjectURL(url);
+  }
+
   // Compact mode class
   useEffect(() => {
     document.documentElement.classList.toggle("compact", !!compact);
@@ -408,7 +436,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] safe-px safe-pt safe-pb">
-      {/* resume banner */}
       {resumeDraft && !work && tab === "log" && (
         <div className="banner">
           <div>
@@ -422,16 +449,16 @@ export default function App() {
       )}
 
       {/* top bar */}
-      <header className="flex items-center gap-3 justify-between py-3">
-        <div className="text-2xl font-extrabold">SetForge</div>
+      <header className="flex items-center gap-2 sm:gap-3 justify-between py-2 sm:py-3 sticky top-0 z-30 bg-[var(--bg)]">
+        <div className="text-xl sm:text-2xl font-extrabold">SetForge</div>
 
-        <nav className="flex gap-2">
+        <nav className="flex gap-1 sm:gap-2">
           {["log", "split", "sessions", "coach"].map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={
-                "px-4 py-2 rounded-xl border " +
+                "px-3 sm:px-4 py-2 rounded-xl border " +
                 (tab === t ? "bg-neutral-800 border-neutral-700" : "bg-neutral-900 border-neutral-800")
               }
             >
@@ -465,176 +492,221 @@ export default function App() {
                 <div className="pill">Choose day to log</div>
                 <div className="grid gap-2">
                   {split.days.map((d, i) => (
-                    <button key={d.id} className="btn" onClick={() => { setWork(null); /* reset */ startWorkoutFor(i); }}>
+                    <button key={d.id} className="btn" onClick={() => { setWork(null); startWorkoutFor(i); }}>
                       Start — {d.name}
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="grid gap-4 max-w-3xl">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">{work.dayName} — {work.date}</h3>
-                  <div className="flex gap-2">
-                    <button className="btn" onClick={discardWorkout}>Discard</button>
-                    <button className="btn-primary" onClick={saveWorkout}>Save session</button>
+              <>
+                <div className="grid gap-4 max-w-3xl">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold">{work.dayName} — {work.date}</h3>
+                  </div>
+
+                  {/* grouped render */}
+                  <div className="grid gap-3">
+                    {renderEntriesGrouped().map((blk, k) => {
+                      const renderSetRow = (entryIndex, labelPrefix="") => (s, si) => (
+                        <div key={si} className="flex items-center gap-2">
+                          <span className="text-xs text-neutral-400 w-10">{labelPrefix}{si + 1}</span>
+                          <input
+                            className="input w-24"
+                            placeholder={`wt (${units})`}
+                            value={s.weight}
+                            onChange={(ev) => {
+                              const next = structuredClone(work);
+                              next.entries[entryIndex].sets[si].weight = ev.target.value;
+                              setWork(next);
+                            }}
+                          />
+                          <input
+                            className="input w-20"
+                            placeholder="reps"
+                            value={s.reps}
+                            onChange={(ev) => {
+                              const next = structuredClone(work);
+                              next.entries[entryIndex].sets[si].reps = ev.target.value;
+                              setWork(next);
+                            }}
+                          />
+                          <label className="flex items-center gap-1 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={s.fail}
+                              onChange={(ev) => {
+                                const next = structuredClone(work);
+                                next.entries[entryIndex].sets[si].fail = ev.target.checked;
+                                setWork(next);
+                              }}
+                            />
+                            F
+                          </label>
+
+                          {/* Optional extras collapsed by default */}
+                          <details className="ml-2">
+                            <summary className="text-xs text-neutral-400 cursor-pointer">more</summary>
+                            <div className="mt-2 flex items-center gap-2">
+                              <input
+                                className="input w-16"
+                                placeholder="RIR"
+                                value={s.rir ?? ""}
+                                onChange={(ev) => {
+                                  const next = structuredClone(work);
+                                  const v = ev.target.value.trim();
+                                  next.entries[entryIndex].sets[si].rir = v === "" ? null : Number(v);
+                                  setWork(next);
+                                }}
+                              />
+                              <input
+                                className="input w-20"
+                                placeholder="tempo"
+                                value={s.tempo ?? ""}
+                                onChange={(ev) => {
+                                  const next = structuredClone(work);
+                                  next.entries[entryIndex].sets[si].tempo = ev.target.value;
+                                  setWork(next);
+                                }}
+                              />
+                            </div>
+                          </details>
+                        </div>
+                      );
+
+                      if (blk.type === "solo") {
+                        const e = work.entries[blk.aIndex];
+                        const [suggestBusy, setSuggestBusy] = useState(false);
+                        const [restBusy, setRestBusy] = useState(false);
+                        const [descBusy, setDescBusy] = useState(false);
+                        const [suggestLine, setSuggestLine] = useState("");
+                        const [suggestWhy, setSuggestWhy] = useState("");
+                        const [restSec, setRestSec] = useState(null);
+                        const [warmups, setWarmups] = useState([]);
+                        const [descText, setDescText] = useState("");
+
+                        // tiny inline component to call AI (hooks per block)
+                        function Controls() {
+                          async function doSuggest() {
+                            setSuggestBusy(true);
+                            try {
+                              const hist = getHistory(e.name);
+                              const rirHistory = hist.flatMap(h => h.sets.map(s => s.rir).filter(v => v !== null));
+                              const failureFlags = hist.flatMap(h => h.sets.map(s => !!s.fail));
+                              const next = await aiSuggestNext({
+                                name: e.name,
+                                history: hist,
+                                targetLow: e.low,
+                                targetHigh: e.high,
+                                units,
+                                bodyweight: (e.equip === "bodyweight"),
+                                rirHistory,
+                                failureFlags
+                              });
+                              const arrow = next.decision === "up" ? "↑" : next.decision === "down" ? "↓" : "→";
+                              const line = `${arrow} ${next.weight ?? "—"}${next.weight==null?"":units}`;
+                              setSuggestLine(line);
+                              setSuggestWhy(next.note || "");
+                            } finally { setSuggestBusy(false); }
+                          }
+                          async function doRest() {
+                            setRestBusy(true);
+                            try {
+                              const lastSet = e.sets[e.sets.length-1] || {};
+                              const hist = getHistory(e.name);
+                              const sec = await aiRestSuggest({ name: e.name, lastSet, intensity:{ targetLow:e.low, targetHigh:e.high }, history: hist });
+                              setRestSec(sec);
+                            } finally { setRestBusy(false); }
+                          }
+                          async function doWarmup() {
+                            const working = Number(
+                              [...e.sets].reverse().find(s => s.weight)?.weight || 0
+                            ) || 0;
+                            const hist = getHistory(e.name);
+                            const tops = hist.map(h => Math.max(...h.sets.map(s => Number(s.weight||0))));
+                            try {
+                              const plan = await aiWarmupPlan({ name: e.name, workingWeight: working, units, recentTops: tops });
+                              setWarmups(plan || []);
+                            } catch {}
+                          }
+                          async function doDescribe() {
+                            setDescBusy(true);
+                            try {
+                              const text = await aiDescribe({ name: e.name, equip: e.equip || "machine", cat: e.cat?.includes("compound")?"compound":"iso_small" });
+                              setDescText(text || "");
+                            } finally { setDescBusy(false); }
+                          }
+
+                          return (
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <SpinnerButton className="btn" loading={suggestBusy} onClick={doSuggest}>Suggest</SpinnerButton>
+                              <SpinnerButton className="btn" loading={restBusy} onClick={doRest}>Rest</SpinnerButton>
+                              <button className="btn" onClick={doWarmup}>Warm-ups</button>
+                              <SpinnerButton className="btn" loading={descBusy} onClick={doDescribe}>Describe</SpinnerButton>
+                              {!!suggestLine && (
+                                <>
+                                  <span className="pill">{suggestLine}</span>
+                                  {suggestWhy ? <details><summary className="text-xs text-neutral-400 cursor-pointer">why?</summary><div className="text-xs text-neutral-300 mt-1">{suggestWhy}</div></details> : null}
+                                </>
+                              )}
+                              {restSec ? <span className="pill">~{restSec}s</span> : null}
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div key={k} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
+                            <div className="font-semibold">
+                              {e.name} <span className="text-neutral-400 text-sm">({e.low}–{e.high} reps)</span>
+                              {e.ss && <span className="ml-2 text-xs pill">Superset</span>}
+                            </div>
+                            <div className="mt-2 grid gap-2">
+                              {e.sets.map(renderSetRow(blk.aIndex))}
+                            </div>
+                            <Controls />
+                            { /* Warmups list */ }
+                            {/* render warmups if present */}
+                            {/* (kept inline to keep code compact) */}
+                          </div>
+                        );
+                      } else {
+                        // Superset block
+                        const a = work.entries[blk.aIndex];
+                        const b = work.entries[blk.bIndex];
+                        const maxSets = Math.max(a.sets.length, b.sets.length);
+
+                        return (
+                          <div key={k} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
+                            <div className="font-semibold flex items-center gap-3">
+                              <span>{a.name}</span>
+                              <span className="text-xs pill">Superset</span>
+                              <span className="opacity-60">×</span>
+                              <span>{b.name}</span>
+                            </div>
+                            <div className="mt-2 grid gap-2">
+                              {Array.from({ length: maxSets }).map((_, si) => (
+                                <div key={si} className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                  {renderSetRow(blk.aIndex, "A")(a.sets[si] || { weight:"", reps:"", fail:false, rir:null, tempo:"" }, si)}
+                                  {renderSetRow(blk.bIndex, "B")(b.sets[si] || { weight:"", reps:"", fail:false, rir:null, tempo:"" }, si)}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+                    })}
                   </div>
                 </div>
 
-                {/* grouped render */}
-                <div className="grid gap-3">
-                  {renderEntriesGrouped().map((blk, k) => {
-                    if (blk.type === "solo") {
-                      const e = work.entries[blk.aIndex];
-                      return (
-                        <div key={k} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
-                          <div className="font-semibold">
-                            {e.name} <span className="text-neutral-400 text-sm">({e.low}–{e.high} reps)</span>
-                            {e.ss && <span className="ml-2 text-xs pill">Superset</span>}
-                          </div>
-                          <div className="mt-2 grid gap-2">
-                            {e.sets.map((s, si) => (
-                              <div key={si} className="flex items-center gap-2">
-                                <span className="text-xs text-neutral-400 w-10">Set {si + 1}</span>
-                                <input
-                                  className="input w-24"
-                                  placeholder={`wt (${units})`}
-                                  value={s.weight}
-                                  onChange={(ev) => {
-                                    const next = structuredClone(work);
-                                    next.entries[blk.aIndex].sets[si].weight = ev.target.value;
-                                    setWork(next);
-                                  }}
-                                />
-                                <input
-                                  className="input w-20"
-                                  placeholder="reps"
-                                  value={s.reps}
-                                  onChange={(ev) => {
-                                    const next = structuredClone(work);
-                                    next.entries[blk.aIndex].sets[si].reps = ev.target.value;
-                                    setWork(next);
-                                  }}
-                                />
-                                <label className="flex items-center gap-1 text-xs">
-                                  <input
-                                    type="checkbox"
-                                    checked={s.fail}
-                                    onChange={(ev) => {
-                                      const next = structuredClone(work);
-                                      next.entries[blk.aIndex].sets[si].fail = ev.target.checked;
-                                      setWork(next);
-                                    }}
-                                  />
-                                  to failure
-                                </label>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    } else {
-                      const a = work.entries[blk.aIndex];
-                      const b = work.entries[blk.bIndex];
-                      const maxSets = Math.max(a.sets.length, b.sets.length);
-                      return (
-                        <div key={k} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
-                          <div className="font-semibold flex items-center gap-3">
-                            <span>{a.name}</span>
-                            <span className="text-xs pill">Superset</span>
-                            <span className="opacity-60">×</span>
-                            <span>{b.name}</span>
-                          </div>
-                          <div className="mt-2 grid gap-2">
-                            {Array.from({ length: maxSets }).map((_, si) => (
-                              <div key={si} className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                {/* A */}
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-neutral-400 w-10">A{si+1}</span>
-                                  <input
-                                    className="input w-24"
-                                    placeholder={`wt (${units})`}
-                                    value={a.sets[si]?.weight ?? ""}
-                                    onChange={(ev) => {
-                                      const next = structuredClone(work);
-                                      if (!next.entries[blk.aIndex].sets[si]) next.entries[blk.aIndex].sets[si] = { weight:"", reps:"", fail:false };
-                                      next.entries[blk.aIndex].sets[si].weight = ev.target.value;
-                                      setWork(next);
-                                    }}
-                                  />
-                                  <input
-                                    className="input w-20"
-                                    placeholder="reps"
-                                    value={a.sets[si]?.reps ?? ""}
-                                    onChange={(ev) => {
-                                      const next = structuredClone(work);
-                                      if (!next.entries[blk.aIndex].sets[si]) next.entries[blk.aIndex].sets[si] = { weight:"", reps:"", fail:false };
-                                      next.entries[blk.aIndex].sets[si].reps = ev.target.value;
-                                      setWork(next);
-                                    }}
-                                  />
-                                  <label className="flex items-center gap-1 text-xs">
-                                    <input
-                                      type="checkbox"
-                                      checked={!!a.sets[si]?.fail}
-                                      onChange={(ev) => {
-                                        const next = structuredClone(work);
-                                        if (!next.entries[blk.aIndex].sets[si]) next.entries[blk.aIndex].sets[si] = { weight:"", reps:"", fail:false };
-                                        next.entries[blk.aIndex].sets[si].fail = ev.target.checked;
-                                        setWork(next);
-                                      }}
-                                    />
-                                    F
-                                  </label>
-                                </div>
-                                {/* B */}
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-neutral-400 w-10">B{si+1}</span>
-                                  <input
-                                    className="input w-24"
-                                    placeholder={`wt (${units})`}
-                                    value={b.sets[si]?.weight ?? ""}
-                                    onChange={(ev) => {
-                                      const next = structuredClone(work);
-                                      if (!next.entries[blk.bIndex].sets[si]) next.entries[blk.bIndex].sets[si] = { weight:"", reps:"", fail:false };
-                                      next.entries[blk.bIndex].sets[si].weight = ev.target.value;
-                                      setWork(next);
-                                    }}
-                                  />
-                                  <input
-                                    className="input w-20"
-                                    placeholder="reps"
-                                    value={b.sets[si]?.reps ?? ""}
-                                    onChange={(ev) => {
-                                      const next = structuredClone(work);
-                                      if (!next.entries[blk.bIndex].sets[si]) next.entries[blk.bIndex].sets[si] = { weight:"", reps:"", fail:false };
-                                      next.entries[blk.bIndex].sets[si].reps = ev.target.value;
-                                      setWork(next);
-                                    }}
-                                  />
-                                  <label className="flex items-center gap-1 text-xs">
-                                    <input
-                                      type="checkbox"
-                                      checked={!!b.sets[si]?.fail}
-                                      onChange={(ev) => {
-                                        const next = structuredClone(work);
-                                        if (!next.entries[blk.bIndex].sets[si]) next.entries[blk.bIndex].sets[si] = { weight:"", reps:"", fail:false };
-                                        next.entries[blk.bIndex].sets[si].fail = ev.target.checked;
-                                        setWork(next);
-                                      }}
-                                    />
-                                    F
-                                  </label>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    }
-                  })}
+                {/* sticky bottom action bar for mobile */}
+                <div className="bottombar">
+                  <div className="flex items-center gap-2">
+                    <SpinnerButton className="btn-primary" loading={busySave} onClick={saveWorkout}>Save</SpinnerButton>
+                    <button className="btn" onClick={discardWorkout}>Discard</button>
+                  </div>
+                  <Timer initial={90} />
                 </div>
-              </div>
+              </>
             )}
           </section>
         )}
@@ -692,7 +764,6 @@ export default function App() {
                                 const next = structuredClone(split);
                                 next.days[di].exercises[xi].high = Number(e.target.value||12); setSplit(next);
                               }} />
-                              {/* Superset link */}
                               {xi > 0 && (
                                 <label className="flex items-center gap-1 text-xs">
                                   <input
@@ -770,7 +841,10 @@ export default function App() {
 
         {tab === "sessions" && (
           <section className="grid gap-4">
-            <h2 className="text-xl font-semibold">Sessions</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Sessions</h2>
+              <button className="btn" onClick={exportJSON}>Export JSON</button>
+            </div>
             {!sessions.length ? (
               <div className="text-neutral-400">No sessions yet.</div>
             ) : (
@@ -786,7 +860,7 @@ export default function App() {
                           <div className="text-xs text-neutral-400">
                             {e.sets.map((x, xi) => (
                               <span key={xi} className="mr-2">
-                                [{x.weight || "?"}{units} × {x.reps || "?"}{x.fail ? " F" : ""}]
+                                [{x.weight || "?"}{units} × {x.reps || "?"}{x.fail ? " F" : ""}{x.rir!=null?` r${x.rir}`:""}]
                               </span>
                             ))}
                           </div>
@@ -808,7 +882,7 @@ export default function App() {
         )}
       </main>
 
-      <footer className="mt-8 text-center text-xs text-neutral-500">
+      <footer className="mt-20 text-center text-xs text-neutral-500 pb-[90px] sm:pb-0">
         Offline-ready • Data syncs when online
       </footer>
 

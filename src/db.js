@@ -2,7 +2,6 @@
 import { db } from "./firebase";
 import { doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 
-// Subscribe to main user doc changes (split/sessions)
 export function subscribeUserState(uid, onChange) {
   const ref = doc(db, "users", uid);
   return onSnapshot(ref, (snap) => {
@@ -25,7 +24,6 @@ export async function saveSessions(uid, sessions) {
   await setDoc(ref, { sessions, updatedAt: serverTimestamp() }, { merge: true });
 }
 
-// ---- Work draft (autosave in-progress workout) ----
 export async function saveWorkDraft(uid, workDraft) {
   const ref = doc(db, "users", uid);
   await setDoc(ref, { workDraft, updatedAt: serverTimestamp() }, { merge: true });

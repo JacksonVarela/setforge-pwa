@@ -1,6 +1,6 @@
 // src/App.jsx
-import React, { useEffect, useState } from "react";
-import { auth } from "./firebase";
+import React, { useEffect, useState, useRef } from "react";
+import { auth, db } from "./firebase";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -8,6 +8,9 @@ import {
   sendEmailVerification,
   signOut as fbSignOut,
 } from "firebase/auth";
+import {
+  doc, setDoc, getDoc, onSnapshot, collection, query, orderBy, limit, addDoc
+} from "firebase/firestore";
 
 import ImporterAI from "./components/ImporterAI";
 import CoachChat from "./components/CoachChat";
@@ -30,107 +33,103 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 // ---------- templates ----------
 const TEMPLATES = [
   {
-    id: "ul-rr",
-    name: "Upper / Lower / Rest (repeat)",
+    id: "ul-rr", name: "Upper / Lower / Rest (repeat)",
     days: [
       { id: uid(), name: "Upper", exercises: [
-        { name: "Bench Press", sets: 4, low: 5, high: 8, equip: "barbell", group: "push", cat: "compound" },
-        { name: "Row (Machine)", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
-        { name: "Overhead Press", sets: 3, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
-        { name: "Lat Pulldown", sets: 3, low: 10, high: 12, equip: "machine", group: "pull", cat: "compound" },
-        { name: "Lateral Raise", sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+        { name: "Bench Press", sets: 4, low: 5, high: 8, superset: null },
+        { name: "Row (Machine)", sets: 3, low: 8, high: 12, superset: null },
+        { name: "Overhead Press", sets: 3, low: 6, high: 10, superset: null },
+        { name: "Lat Pulldown", sets: 3, low: 10, high: 12, superset: null },
+        { name: "Lateral Raise", sets: 3, low: 12, high: 20, superset: null },
       ]},
       { id: uid(), name: "Lower", exercises: [
-        { name: "Back Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
-        { name: "Romanian Deadlift", sets: 3, low: 6, high: 10, equip: "barbell", group: "legs", cat: "compound" },
-        { name: "Leg Press", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "compound" },
-        { name: "Leg Curl", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
-        { name: "Calf Raise", sets: 3, low: 12, high: 20, equip: "machine", group: "legs", cat: "isolation" },
+        { name: "Back Squat", sets: 4, low: 5, high: 8, superset: null },
+        { name: "Romanian Deadlift", sets: 3, low: 6, high: 10, superset: null },
+        { name: "Leg Press", sets: 3, low: 10, high: 15, superset: null },
+        { name: "Leg Curl", sets: 3, low: 10, high: 15, superset: null },
+        { name: "Calf Raise", sets: 3, low: 12, high: 20, superset: null },
       ]},
       { id: uid(), name: "Rest / Active Recovery", exercises: [] }
     ]
   },
   {
-    id: "ppl-6d",
-    name: "PPL (6 days)",
+    id: "ppl-6d", name: "PPL (6 days)",
     days: [
       { id: uid(), name: "Push A", exercises: [
-        { name: "Barbell Bench Press", sets: 4, low: 5, high: 8, equip: "barbell", group: "push", cat: "compound" },
-        { name: "Incline DB Press", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "push", cat: "compound" },
-        { name: "Overhead Press (Smith)", sets: 3, low: 6, high: 10, equip: "smith", group: "push", cat: "compound" },
-        { name: "Lateral Raise", sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+        { name: "Barbell Bench Press", sets: 4, low: 5, high: 8, superset: null },
+        { name: "Incline DB Press", sets: 3, low: 8, high: 12, superset: null },
+        { name: "Overhead Press (Smith)", sets: 3, low: 6, high: 10, superset: null },
+        { name: "Lateral Raise", sets: 3, low: 12, high: 20, superset: null },
       ]},
       { id: uid(), name: "Pull A", exercises: [
-        { name: "Weighted Pull-up", sets: 4, low: 5, high: 8, equip: "bodyweight", group: "pull", cat: "compound" },
-        { name: "Barbell Row", sets: 3, low: 6, high: 10, equip: "barbell", group: "pull", cat: "compound" },
-        { name: "Lat Pulldown", sets: 3, low: 10, high: 12, equip: "machine", group: "pull", cat: "compound" },
-        { name: "Face Pull", sets: 3, low: 12, high: 20, equip: "cable", group: "pull", cat: "isolation" },
+        { name: "Weighted Pull-up", sets: 4, low: 5, high: 8, superset: null },
+        { name: "Barbell Row", sets: 3, low: 6, high: 10, superset: null },
+        { name: "Lat Pulldown", sets: 3, low: 10, high: 12, superset: null },
+        { name: "Face Pull", sets: 3, low: 12, high: 20, superset: null },
       ]},
       { id: uid(), name: "Legs A", exercises: [
-        { name: "Back Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
-        { name: "Romanian Deadlift", sets: 3, low: 6, high: 10, equip: "barbell", group: "legs", cat: "compound" },
-        { name: "Leg Press", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "compound" },
-        { name: "Leg Curl", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+        { name: "Back Squat", sets: 4, low: 5, high: 8, superset: null },
+        { name: "Romanian Deadlift", sets: 3, low: 6, high: 10, superset: null },
+        { name: "Leg Press", sets: 3, low: 10, high: 15, superset: null },
+        { name: "Leg Curl", sets: 3, low: 10, high: 15, superset: null },
       ]},
       { id: uid(), name: "Push B", exercises: [
-        { name: "Incline Bench Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
-        { name: "Seated DB Shoulder Press", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "push", cat: "compound" },
-        { name: "Cable Lateral Raise", sets: 3, low: 12, high: 20, equip: "cable", group: "push", cat: "isolation" },
+        { name: "Incline Bench Press", sets: 4, low: 6, high: 10, superset: null },
+        { name: "Seated DB Shoulder Press", sets: 3, low: 8, high: 12, superset: null },
+        { name: "Cable Lateral Raise", sets: 3, low: 12, high: 20, superset: null },
       ]},
       { id: uid(), name: "Pull B", exercises: [
-        { name: "Deadlift (RPE 7)", sets: 3, low: 3, high: 5, equip: "barbell", group: "pull", cat: "compound" },
-        { name: "Chest-Supported Row", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
-        { name: "EZ Bar Curl", sets: 3, low: 8, high: 12, equip: "barbell", group: "pull", cat: "isolation" },
+        { name: "Deadlift (RPE 7)", sets: 3, low: 3, high: 5, superset: null },
+        { name: "Chest-Supported Row", sets: 3, low: 8, high: 12, superset: null },
+        { name: "EZ Bar Curl", sets: 3, low: 8, high: 12, superset: null },
       ]},
       { id: uid(), name: "Legs B", exercises: [
-        { name: "Front Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
-        { name: "Hip Thrust", sets: 3, low: 8, high: 12, equip: "barbell", group: "legs", cat: "compound" },
-        { name: "Leg Extension", sets: 3, low: 12, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+        { name: "Front Squat", sets: 4, low: 5, high: 8, superset: null },
+        { name: "Hip Thrust", sets: 3, low: 8, high: 12, superset: null },
+        { name: "Leg Extension", sets: 3, low: 12, high: 15, superset: null },
       ]},
     ],
   },
   {
-    id: "arnold-6d",
-    name: "Arnold (C/B • S/A • Legs x2)",
+    id: "arnold-6d", name: "Arnold (C/B • S/A • Legs x2)",
     days: [
       { id: uid(), name: "Chest + Back", exercises: [
-        { name: "Incline Bench Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
-        { name: "Pull-up / Pulldown", sets: 4, low: 6, high: 10, equip: "machine", group: "pull", cat: "compound" },
-        { name: "DB Fly", sets: 3, low: 10, high: 15, equip: "dumbbell", group: "push", cat: "isolation" },
-        { name: "Barbell Row", sets: 3, low: 6, high: 10, equip: "barbell", group: "pull", cat: "compound" },
+        { name: "Incline Bench Press", sets: 4, low: 6, high: 10, superset: null },
+        { name: "Pull-up / Pulldown", sets: 4, low: 6, high: 10, superset: null },
+        { name: "DB Fly", sets: 3, low: 10, high: 15, superset: null },
+        { name: "Barbell Row", sets: 3, low: 6, high: 10, superset: null },
       ]},
       { id: uid(), name: "Shoulders + Arms", exercises: [
-        { name: "Overhead Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
-        { name: "Lateral Raise", sets: 4, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
-        { name: "EZ Curl", sets: 3, low: 8, high: 12, equip: "barbell", group: "pull", cat: "isolation" },
-        { name: "Cable Pushdown", sets: 3, low: 10, high: 15, equip: "cable", group: "push", cat: "isolation" },
+        { name: "Overhead Press", sets: 4, low: 6, high: 10, superset: null },
+        { name: "Lateral Raise", sets: 4, low: 12, high: 20, superset: null },
+        { name: "EZ Curl", sets: 3, low: 8, high: 12, superset: null },
+        { name: "Cable Pushdown", sets: 3, low: 10, high: 15, superset: null },
       ]},
       { id: uid(), name: "Legs", exercises: [
-        { name: "Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
-        { name: "Leg Press", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "compound" },
-        { name: "Leg Curl", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
-        { name: "Standing Calf", sets: 4, low: 12, high: 20, equip: "machine", group: "legs", cat: "isolation" },
+        { name: "Squat", sets: 4, low: 5, high: 8, superset: null },
+        { name: "Leg Press", sets: 3, low: 10, high: 15, superset: null },
+        { name: "Leg Curl", sets: 3, low: 10, high: 15, superset: null },
+        { name: "Standing Calf", sets: 4, low: 12, high: 20, superset: null },
       ]},
     ],
   },
   {
-    id: "fb-3d",
-    name: "Full Body (3 days)",
+    id: "fb-3d", name: "Full Body (3 days)",
     days: [
       { id: uid(), name: "Full 1", exercises: [
-        { name: "Squat", sets: 3, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
-        { name: "Bench Press", sets: 3, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
-        { name: "Pull-up", sets: 3, low: 6, high: 10, equip: "bodyweight", group: "pull", cat: "compound" },
+        { name: "Squat", sets: 3, low: 5, high: 8, superset: null },
+        { name: "Bench Press", sets: 3, low: 6, high: 10, superset: null },
+        { name: "Pull-up", sets: 3, low: 6, high: 10, superset: null },
       ]},
       { id: uid(), name: "Full 2", exercises: [
-        { name: "Deadlift", sets: 2, low: 3, high: 5, equip: "barbell", group: "pull", cat: "compound" },
-        { name: "Incline DB Press", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "push", cat: "compound" },
-        { name: "Row (Machine)", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+        { name: "Deadlift", sets: 2, low: 3, high: 5, superset: null },
+        { name: "Incline DB Press", sets: 3, low: 8, high: 12, superset: null },
+        { name: "Row (Machine)", sets: 3, low: 8, high: 12, superset: null },
       ]},
       { id: uid(), name: "Full 3", exercises: [
-        { name: "Front Squat", sets: 3, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
-        { name: "Overhead Press", sets: 3, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
-        { name: "Lat Pulldown", sets: 3, low: 10, high: 12, equip: "machine", group: "pull", cat: "compound" },
+        { name: "Front Squat", sets: 3, low: 5, high: 8, superset: null },
+        { name: "Overhead Press", sets: 3, low: 6, high: 10, superset: null },
+        { name: "Lat Pulldown", sets: 3, low: 10, high: 12, superset: null },
       ]},
     ],
   },
@@ -193,7 +192,7 @@ function LoginScreen() {
   );
 }
 
-// Small async button (uses “…” while busy)
+// Small async button (shows “…” while busy)
 function AsyncButton({ label, onClick }) {
   const [busy, setBusy] = useState(false);
   return (
@@ -220,21 +219,19 @@ export default function App() {
   const [units, setUnits] = useLocalState("sf.units", "lb");
   const [split, setSplit] = useLocalState("sf.split", null);
   const [sessions, setSessions] = useLocalState("sf.sessions", []);
-  const [work, setWork] = useLocalState("sf.work", null); // { id, date, dayName, entries[], links? }
+  const [work, setWork] = useLocalState("sf.work", null);
 
   const [showImporter, setShowImporter] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
 
+  // auth + mobile compact class
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => { setUser(u || null); setAuthReady(true); });
     return unsub;
   }, []);
-
-  // Header fits mobile
   useEffect(() => {
     const apply = () => document.body.classList.toggle("compact", window.innerWidth <= 430);
-    apply();
-    window.addEventListener("resize", apply);
+    apply(); window.addEventListener("resize", apply);
     return () => window.removeEventListener("resize", apply);
   }, []);
 
@@ -243,30 +240,78 @@ export default function App() {
     window.location.replace(window.location.origin + window.location.pathname);
   }
 
-  // Defensive split shape
-  useEffect(() => { if (split && !Array.isArray(split?.days)) setSplit(null); }, [split, setSplit]);
+  // -------- Firestore sync (split doc + sessions collection) --------
+  useEffect(() => {
+    if (!user) return;
+    const splitRef = doc(db, "users", user.uid, "data", "split");
+    getDoc(splitRef).then(snap => {
+      const s = snap.data()?.value;
+      if (s && Array.isArray(s.days)) setSplit(s);
+    }).catch(()=>{});
+
+    const q = query(collection(db, "users", user.uid, "sessions"), orderBy("date", "desc"), limit(200));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = [];
+      snap.forEach(d => list.push(d.data()));
+      setSessions(list);
+    });
+    return () => unsub();
+  }, [user]);
+
+  // Save split to Firestore when changed
+  const splitSaveTimer = useRef(null);
+  useEffect(() => {
+    if (!user || !split || !Array.isArray(split.days)) return;
+    clearTimeout(splitSaveTimer.current);
+    splitSaveTimer.current = setTimeout(async () => {
+      try {
+        await setDoc(doc(db, "users", user.uid, "data", "split"), { value: split, updatedAt: Date.now() });
+      } catch {}
+    }, 400);
+    return () => clearTimeout(splitSaveTimer.current);
+  }, [split, user]);
 
   // ---------- logging ----------
   async function startWorkoutFor(dayIdx) {
     if (!split || !Array.isArray(split.days)) return;
     const day = split.days[dayIdx]; if (!day) return;
 
+    // Build entries; inherit split-level superset group
     const entries = (day.exercises || []).map((ex) => {
-      const sets = Array.from({ length: Number(ex.sets || 3) }, () => ({ weight: "", reps: "", fail: false, isDrop:false }));
+      const sets = Array.from({ length: Number(ex.sets || 3) }, () => ({
+        weight: "", reps: "", rir: "", fail: false, isDrop:false
+      }));
       return {
         name: ex.name || "Exercise",
         low: ex.low ?? 8,
         high: ex.high ?? 12,
-        equip: ex.equip || "",
         sets,
         restText: "…",
-        supersetWith: null, // index it links to
+        supersetWith: null,
+        decisionNote: "", // auto-saved “why” from Suggest
       };
     });
-    const base = { id: uid(), date: todayISO(), dayName: day.name || `Day ${dayIdx+1}`, entries, links: {} };
+
+    // If split had "superset" grouping, pair entries that share the same number
+    const groups = {};
+    (day.exercises || []).forEach((ex, idx) => {
+      if (typeof ex.superset === "number") {
+        groups[ex.superset] = (groups[ex.superset] || []).concat(idx);
+      }
+    });
+    Object.values(groups).forEach(arr => {
+      if (arr.length >= 2) {
+        // link first two for now
+        const [a, b] = arr;
+        entries[a].supersetWith = b;
+        entries[b].supersetWith = a;
+      }
+    });
+
+    const base = { id: uid(), date: todayISO(), dayName: day.name || `Day ${dayIdx+1}`, entries };
     setWork(base);
 
-    // Inline rest: fetch per exercise
+    // Inline rest
     try {
       const results = await Promise.all(entries.map(e => aiRest({ name: e.name })));
       const next = structuredClone(base);
@@ -279,22 +324,31 @@ export default function App() {
     }
   }
 
-  function saveWorkout() {
-    if (!work || !Array.isArray(work?.entries)) return;
-    setSessions([{ ...work }, ...sessions].slice(0, 200));
+  async function saveWorkout() {
+    if (!user || !work || !Array.isArray(work?.entries)) return;
+    // local (visible immediately)
+    const local = [{ ...work }, ...sessions].slice(0, 200);
+    setSessions(local);
     setWork(null);
     alert("Session saved.");
+
+    // cloud
+    try {
+      await addDoc(collection(db, "users", user.uid, "sessions"), {
+        ...local[0],
+        uid: user.uid,
+      });
+    } catch {}
   }
+
   function discardWorkout() { if (confirm("Discard current session?")) setWork(null); }
 
-  // Superset linking
   function linkSuperset(aIdx, bIdx) {
     if (!work) return;
     if (aIdx === bIdx) return;
     const next = structuredClone(work);
     next.entries[aIdx].supersetWith = bIdx;
     next.entries[bIdx].supersetWith = aIdx;
-    // Adjust rest text for both
     const labelA = next.entries[bIdx].name;
     const labelB = next.entries[aIdx].name;
     next.entries[aIdx].restText = `Alternate with “${labelA}”. Rest ~45–75s between moves (~90–120s per pair).`;
@@ -307,7 +361,6 @@ export default function App() {
     const peer = next.entries[idx].supersetWith;
     next.entries[idx].supersetWith = null;
     if (peer != null && next.entries[peer]) next.entries[peer].supersetWith = null;
-    // Optional: restore default rest text
     const e = next.entries[idx];
     next.entries[idx].restText = e.low <= 8 ? "Rest ~2–3 min" : "Rest ~60–90s";
     if (peer != null && next.entries[peer]) {
@@ -317,7 +370,6 @@ export default function App() {
     setWork(next);
   }
 
-  // Drop set add (adds a drop row after the selected set)
   function addDropSet(ei, si) {
     if (!work) return;
     const next = structuredClone(work);
@@ -325,12 +377,17 @@ export default function App() {
     const base = sets[si];
     const prevW = parseFloat((base?.weight ?? "").toString());
     const dropW = isFinite(prevW) && prevW > 0 ? Math.max(0, Math.round(prevW * 0.85)) : "";
-    const drop = { weight: dropW, reps: "", fail: false, isDrop: true };
+    const drop = { weight: dropW, reps: "", rir: "", fail: false, isDrop: true };
     sets.splice(si + 1, 0, drop);
     setWork(next);
   }
+  function removeSet(ei, si) {
+    if (!work) return;
+    const next = structuredClone(work);
+    next.entries[ei].sets.splice(si, 1);
+    setWork(next);
+  }
 
-  // Build history for Suggest from saved sessions (last 6 appearances)
   function historyFor(name) {
     const hist = [];
     for (const s of sessions) {
@@ -345,8 +402,21 @@ export default function App() {
         }
       }
     }
-    // most recent first, cap to ~12 last sets
     return hist.slice(0, 12);
+  }
+  function rirHistoryFor(name) {
+    const out = [];
+    for (const s of sessions) {
+      for (const e of (s.entries || [])) {
+        if (String(e.name).toLowerCase() === String(name).toLowerCase()) {
+          for (const set of (e.sets || [])) {
+            const rir = set?.rir === "" ? null : Number(set.rir);
+            out.push(Number.isFinite(rir) ? rir : null);
+          }
+        }
+      }
+    }
+    return out.slice(0, 12);
   }
   function failureFlagsFor(name) {
     const flags = [];
@@ -367,7 +437,6 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] safe-px safe-pt safe-pb">
-        {/* Header (wraps on small screens) */}
         <header className="flex flex-wrap items-center gap-2 justify-between py-3">
           <div className="text-2xl font-extrabold shrink-0">SetForge</div>
           <nav className="flex gap-2 w-full sm:w-auto order-3 sm:order-none">
@@ -458,6 +527,23 @@ export default function App() {
                         {/* Inline rest guidance */}
                         <div className="mt-1 text-xs text-neutral-400">Rest: {e?.restText || "…"}</div>
 
+                        {/* Decision note from Suggest (auto-saved) */}
+                        {e?.decisionNote ? (
+                          <div className="mt-2 text-xs text-emerald-400">
+                            Suggest note saved: {e.decisionNote}{" "}
+                            <button
+                              className="underline text-neutral-300"
+                              onClick={()=>{
+                                const next=structuredClone(work);
+                                next.entries[ei].decisionNote="";
+                                setWork(next);
+                              }}
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        ) : null}
+
                         {/* Describe + Suggest + Warm-up */}
                         <div className="mt-2 flex flex-wrap gap-2">
                           <AsyncButton
@@ -472,20 +558,30 @@ export default function App() {
                             onClick={async () => {
                               const hist = historyFor(e?.name || "");
                               const fails = failureFlagsFor(e?.name || "");
-                              const { next } = await aiSuggestNext({
+                              const rirs = rirHistoryFor(e?.name || "");
+                              const resp = await aiSuggestNext({
                                 name: e?.name || "",
                                 units,
                                 history: hist,
+                                rirHistory: rirs,
                                 targetLow: e?.low ?? 8,
                                 targetHigh: e?.high ?? 12,
                                 bodyweight: /pull-up|chin-up|dip/i.test(e?.name || ""),
                                 failureFlags: fails,
                               });
+                              const next = structuredClone(work);
+                              const nx = resp?.next || {};
                               const parts = [];
-                              if (next?.weight != null) parts.push(`${next.weight}${units}`);
-                              if (next?.reps != null) parts.push(`${next.reps} reps`);
-                              const line = parts.length ? `Next: ${parts.join(" × ")}` : "Decision: keep approach steady.";
-                              alert(`${line}\n\nWhy: ${next?.note || "Insufficient history; aim near 1–2 RIR."}`);
+                              if (nx.weight != null) parts.push(`${nx.weight}${units}`);
+                              if (nx.reps != null) parts.push(`${nx.reps} reps`);
+                              const line = parts.length ? `${nx.decision?.toUpperCase?.() || "Decision"}: ${parts.join(" × ")}` : (nx.decision?.toUpperCase?.() || "Decision");
+                              const why = nx.note || "Insufficient history; aim near 1–2 RIR.";
+
+                              // auto-save the “why” note on the exercise
+                              next.entries[ei].decisionNote = why;
+                              setWork(next);
+
+                              alert(`${line}\n\nWhy: ${why}`);
                             }}
                           />
                           <AsyncButton
@@ -502,7 +598,7 @@ export default function App() {
                         {/* Sets */}
                         <div className="mt-2 grid gap-2">
                           {(e?.sets ?? []).map((s, si) => (
-                            <div key={si} className={"flex items-center gap-2 " + (s.isDrop ? "opacity-90" : "")}>
+                            <div key={si} className={"flex flex-wrap items-center gap-2 " + (s.isDrop ? "opacity-90" : "")}>
                               <span className="text-xs text-neutral-400 w-10">{s.isDrop ? "Drop" : `Set ${si + 1}`}</span>
                               <input
                                 className="input w-24"
@@ -526,6 +622,17 @@ export default function App() {
                                   setWork(next);
                                 }}
                               />
+                              <input
+                                className="input w-16"
+                                style={{fontSize:16}}
+                                placeholder="RIR"
+                                value={s?.rir ?? ""}
+                                onChange={(ev) => {
+                                  const next = structuredClone(work);
+                                  next.entries[ei].sets[si].rir = ev.target.value;
+                                  setWork(next);
+                                }}
+                              />
                               <label className="flex items-center gap-1 text-xs">
                                 <input
                                   type="checkbox"
@@ -538,8 +645,10 @@ export default function App() {
                                 />
                                 to failure
                               </label>
-                              {!s.isDrop && (
+                              {!s.isDrop ? (
                                 <button className="btn" onClick={() => addDropSet(ei, si)}>Drop+</button>
+                              ) : (
+                                <button className="btn" onClick={() => removeSet(ei, si)}>Remove</button>
                               )}
                             </div>
                           ))}
@@ -574,7 +683,10 @@ export default function App() {
                         <div className="font-semibold">{d?.name ?? `Day ${di+1}`}</div>
                         <ul className="mt-1 text-sm text-neutral-300 list-disc pl-5">
                           {(d.exercises || []).map((x, xi) => (
-                            <li key={xi}>{x?.name ?? "Exercise"} — {x?.sets ?? 3} × {x?.low ?? 8}–{x?.high ?? 12}</li>
+                            <li key={xi}>
+                              {x?.name ?? "Exercise"} — {x?.sets ?? 3} × {x?.low ?? 8}–{x?.high ?? 12}
+                              {typeof x?.superset === "number" ? <span className="text-xs text-neutral-400"> (SS {x.superset})</span> : null}
+                            </li>
                           ))}
                         </ul>
                       </div>
@@ -653,7 +765,7 @@ export default function App() {
               ) : (
                 <div className="grid gap-3">
                   {(sessions || []).map((s, si) => (
-                    <div key={s?.id ?? si} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
+                    <div key={s?.id ?? si} className="rounded-2xl border border-neutral-800 p-3 bg-neutral-900">
                       <div className="font-semibold">{s?.dayName ?? "Session"} — {s?.date ?? ""}</div>
                       <div className="mt-2 grid gap-1 text-sm">
                         {(s?.entries || []).map((e, i) => (
@@ -662,10 +774,13 @@ export default function App() {
                               {e?.name ?? "Exercise"}
                               {e?.supersetWith != null ? <span className="text-xs text-neutral-400"> — (part of superset)</span> : null}
                             </div>
+                            {e?.decisionNote ? (
+                              <div className="text-xs text-emerald-400">Note: {e.decisionNote}</div>
+                            ) : null}
                             <div className="text-xs text-neutral-400">
                               {(e?.sets || []).map((x, xi) => (
                                 <span key={xi} className="mr-2">
-                                  [{(x?.weight ?? "?")}{units} × {(x?.reps ?? "?")}{x?.fail ? " F" : ""}{x?.isDrop ? " DS" : ""}]
+                                  [{(x?.weight ?? "?")}{units} × {(x?.reps ?? "?")} {x?.rir !== "" ? `${x?.rir}RIR` : ""}{x?.fail ? " F" : ""}{x?.isDrop ? " DS" : ""}]
                                 </span>
                               ))}
                             </div>

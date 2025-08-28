@@ -1,162 +1,30 @@
-/* Tailwind base */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* =========
-   Base theme
-   ========= */
-:root {
-  color-scheme: dark;
-  --bg: #0a0a0a;
-  --bg-2: #111213;
-  --text: #f5f5f5;
-  --muted: #a3a3a3;
-  --accent: #ef4444; /* red-500 */
-  --card: #121212;
-  --border: #2a2a2a;
+/* ---- Resume banner ---- */
+.banner {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .5rem .75rem;
+  background: #0f172a; /* slate-900-ish */
+  border: 1px solid var(--border);
+  border-radius: .75rem;
+  margin-bottom: .5rem;
 }
 
-html, body, #root { height: 100%; }
-html, body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-  overflow-x: hidden; /* prevent sideways nudge on mobile */
+/* ---- Compact mode (mobile) ---- */
+.compact .btn,
+.compact .btn-primary,
+.compact .pill,
+.compact .input {
+  font-size: 13px;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.6rem;
 }
 
-/* Helpful utility to make a full-height section */
-.fullscreen { min-height: 100svh; }
-
-/* =========
-   Page wrappers
-   ========= */
-.page { min-height: 100svh; }
-
-/* Full-viewport background images for login/import */
-.bg-login, .bg-import {
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-}
-.bg-login  { background-image: url('/images/bg-anime-login.webp'); }
-.bg-import { background-image: url('/images/bg-anime-import.webp'); }
-
-/* Subtle dark vignette overlay for readability over busy art */
-.anime-overlay { position: relative; }
-.anime-overlay::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(
-    120% 90% at 50% 10%,
-    rgba(0,0,0,0.15) 0%,
-    rgba(0,0,0,0.35) 45%,
-    rgba(0,0,0,0.65) 100%
-  );
-}
-
-/* Ensure children render above overlay */
-.anime-overlay > * { position: relative; z-index: 1; }
-
-/* =========
-   Coach sticker / avatar (bottom-right)
-   ========= */
-.coach-sticker {
-  position: fixed;
-  right: max(1rem, env(safe-area-inset-right));
-  bottom: max(1rem, env(safe-area-inset-bottom));
-  width: clamp(84px, 22vw, 168px);
-  aspect-ratio: 1/1;
-  background-image: url('/images/coach-sticker.webp');
-  background-size: contain;
-  background-position: center;
-  background-repeat: no-repeat;
-  filter: drop-shadow(0 6px 14px rgba(0,0,0,0.45));
-  animation: floaty 5.5s ease-in-out infinite;
-  pointer-events: none; /* decorative */
-  z-index: 30;
-}
-@keyframes floaty {
-  0%   { transform: translateY(0px); }
-  50%  { transform: translateY(-6px); }
-  100% { transform: translateY(0px); }
-}
-
-/* =========
-   “Glass” cards (nice over art)
-   ========= */
-.glass {
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  background: rgba(10,10,10,0.55);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 0.9rem;
-}
-.glass-strong {
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  background: rgba(10,10,10,0.72);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 1rem;
-}
-
-/* =========
-   Buttons/Input helpers (Tailwind still fine)
-   Mobile-first sizing; slightly larger on >=640px
-   ========= */
-.btn {
-  @apply inline-flex items-center justify-center rounded-xl text-xs sm:text-sm border transition;
-  @apply px-2.5 py-1.5 sm:px-3 sm:py-2;
-  background:#181818; border-color:var(--border);
-}
-.btn:hover { background:#1f1f1f; }
-
-.btn-primary {
-  @apply rounded-xl text-xs sm:text-sm border;
-  @apply px-2.5 py-1.5 sm:px-3 sm:py-2;
-  background:#ffffff; color:#111; border-color:#ffffff;
-}
-.btn-primary:hover { filter: brightness(0.96); }
-
-.btn-ghost {
-  @apply rounded-xl text-xs sm:text-sm border;
-  @apply px-2 py-1 sm:px-2.5 sm:py-1.5;
-  background: transparent; border-color: var(--border);
-}
-
-.pill {
-  @apply inline-flex items-center rounded-lg text-[11px] sm:text-xs;
-  @apply px-2 py-1;
-  background: #1a1a1a; border:1px solid var(--border); color:var(--muted);
-}
-
-/* IMPORTANT: prevent iOS input auto-zoom by using >=16px on mobile */
-.input {
-  @apply w-full rounded-lg border;
-  @apply px-3 py-2;
-  background:#141414; color:var(--text); border:1px solid var(--border);
-  font-size: 16px; /* mobile default to 16px */
-}
-@media (min-width: 640px) {
-  .input { font-size: 0.875rem; } /* back to Tailwind text-sm on larger screens */
-}
-.input::placeholder { color:#7a7a7a; }
-
-/* Scrollbar (desktop polish) */
-* { scrollbar-width: thin; scrollbar-color: #3a3a3a transparent; }
-*::-webkit-scrollbar { width:8px; height:8px; }
-*::-webkit-scrollbar-thumb { background:#3a3a3a; border-radius:999px; }
-
-/* Safe padding for mobile notches */
-.safe-px {
-  padding-left: max(0.75rem, env(safe-area-inset-left));
-  padding-right: max(0.75rem, env(safe-area-inset-right));
-}
-.safe-pt { padding-top: max(0.75rem, env(safe-area-inset-top)); }
-.safe-pb { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
-
-/* Horizontal scroll helper for nav on tiny screens */
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.compact .input { padding: 0.45rem 0.6rem; }
+.compact .coach-sticker { width: clamp(72px, 18vw, 132px); }
+.compact header .text-2xl { font-size: 1.25rem; }
+.compact nav .px-4 { padding-left: .5rem; padding-right: .5rem; }

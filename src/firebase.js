@@ -3,8 +3,9 @@ import { initializeApp, getApps } from "firebase/app";
 import {
   getAuth,
   setPersistence,
-  browserLocalPersistence,  // <<< keep across restarts
+  browserLocalPersistence,
 } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
 export function initFirebaseApp() {
   if (getApps().length) return getApps()[0];
@@ -15,20 +16,18 @@ export function initFirebaseApp() {
     projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
     appId: import.meta.env.VITE_FIREBASE_APP_ID,
   };
-  if (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET) {
-    cfg.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
-  }
-  if (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID) {
-    cfg.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID;
-  }
+  if (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET) cfg.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+  if (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID) cfg.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID;
 
   const app = initializeApp(cfg);
 
-  // Persist login across browser restarts on this device
   const auth = getAuth(app);
   setPersistence(auth, browserLocalPersistence).catch(() => {});
 
   return app;
 }
 
-export const auth = getAuth(initFirebaseApp());
+const app = initFirebaseApp();
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export default app;

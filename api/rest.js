@@ -1,35 +1,29 @@
+// /api/rest.js
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ ok:false, error:"POST only" });
   try {
-    const { name="", lastSet={}, intensity={}, history=[] } = await readJSON(req);
-    const body = {
-      model: "gpt-4o-mini",
-      temperature: 0.2,
-      messages: [
-        { role:"system", content:
-`Recommend rest time (seconds) between sets for hypertrophy.
-Heavier compounds (barbell squat/deadlift/press/row) tend to 120–180s.
-Isolation may be 60–120s.
-Use last set RIR/failure and reps vs target to bias slightly.
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const { name = "" } = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+    const n = String(name).toLowerCase();
 
-Return ONLY JSON: {"restSec": number}`
-        },
-        { role:"user", content: JSON.stringify({ name, lastSet, intensity, history }) }
-      ]
-    };
+    // Simple, robust classifier (no AI needed for reliability)
+    const isHeavyCompound =
+      /(squat|deadlift|rdl|bench|press|row(?!.*cable)|pull[- ]?up|dip|hip thrust|clean|snatch)/.test(n);
+    const isLower =
+      /(squat|deadlift|rdl|leg|hip|calf|glute|hamstring|quad)/.test(n);
 
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
-      method:"POST",
-      headers:{ Authorization:`Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type":"application/json" },
-      body: JSON.stringify(body)
-    });
-    const j = await r.json();
-    const raw = j?.choices?.[0]?.message?.content || "{}";
-    let out = {};
-    try { out = JSON.parse(raw); } catch {}
-    res.status(200).json({ ok:true, restSec: Number(out?.restSec || 90) });
+    let text;
+    if (isHeavyCompound && isLower) {
+      text = "Rest ~2.5–4 minutes between sets (heavy lower-body compound). Push close to 1–2 RIR.";
+    } else if (isHeavyCompound) {
+      text = "Rest ~2–3 minutes between sets (heavy compound). Aim for 1–2 RIR on final set.";
+    } else {
+      text = "Rest ~60–90 seconds between sets (isolation/moderate). Shorten to ~45–60s for pump sets.";
+    }
+
+    return res.status(200).json({ ok: true, text });
   } catch {
-    res.status(200).json({ ok:false, restSec: 90 });
+    return res.status(200).json({ ok:false, text: "" });
   }
 }
-async function readJSON(req){ const a=[]; for await(const c of req) a.push(c); return JSON.parse(Buffer.concat(a).toString("utf8")||"{}"); }

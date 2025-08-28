@@ -1,29 +1,38 @@
 // /api/rest.js
-export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ ok:false, error:"POST only" });
-  try {
-    const chunks = [];
-    for await (const c of req) chunks.push(c);
-    const { name = "" } = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-    const n = String(name).toLowerCase();
+const LIMIT = { windowMs: 60_000, max: 20 };
+const bucket = new Map();
+function tooMany(ip){
+  const now=Date.now(), key=`${ip}:rest`;
+  const arr=(bucket.get(key)||[]).filter(t=>now-t<LIMIT.windowMs);
+  if(arr.length>=LIMIT.max) return true;
+  arr.push(now); bucket.set(key,arr); return false;
+}
 
-    // Simple, robust classifier (no AI needed for reliability)
-    const isHeavyCompound =
-      /(squat|deadlift|rdl|bench|press|row(?!.*cable)|pull[- ]?up|dip|hip thrust|clean|snatch)/.test(n);
-    const isLower =
-      /(squat|deadlift|rdl|leg|hip|calf|glute|hamstring|quad)/.test(n);
+export default async function handler(req,res){
+  if(req.method!=="POST") return res.status(405).json({ok:false,error:"POST only"});
+  const ip = req.headers["x-forwarded-for"]?.toString().split(",")[0] || req.socket?.remoteAddress || "0";
+  if(tooMany(ip)) return res.status(429).json({ok:false,text:"Please slow down."});
+  try{
+    const a=[]; for await(const c of req) a.push(c);
+    const { name="" } = JSON.parse(Buffer.concat(a).toString("utf8")||"{}");
 
-    let text;
-    if (isHeavyCompound && isLower) {
-      text = "Rest ~2.5–4 minutes between sets (heavy lower-body compound). Push close to 1–2 RIR.";
-    } else if (isHeavyCompound) {
-      text = "Rest ~2–3 minutes between sets (heavy compound). Aim for 1–2 RIR on final set.";
-    } else {
-      text = "Rest ~60–90 seconds between sets (isolation/moderate). Shorten to ~45–60s for pump sets.";
-    }
+    const body={ model:"gpt-4o-mini", temperature:0.2, messages:[
+      { role:"system", content:
+`Return ONE short line with a rest guideline for hypertrophy based on exercise name:
+- Big compounds: 2–3 min
+- Moderate: 90–120s
+- Isolation: 45–75s
+Infer by common terms: (squat, deadlift, press, row)=compound; (raise, curl, extension, fly)=isolation.` },
+      { role:"user", content:`Exercise: ${name}` }
+    ]};
 
-    return res.status(200).json({ ok: true, text });
-  } catch {
-    return res.status(200).json({ ok:false, text: "" });
+    const r=await fetch("https://api.openai.com/v1/chat/completions",{
+      method:"POST", headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"Content-Type":"application/json"},
+      body:JSON.stringify(body)
+    });
+    const j=await r.json();
+    res.status(200).json({ok:true,text:j?.choices?.[0]?.message?.content||""});
+  }catch{
+    res.status(200).json({ok:false,text:""});
   }
 }

@@ -1,36 +1,44 @@
+// /api/warmup.js
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ ok:false, error:"POST only" });
   try {
-    const { name="", workingWeight=0, units="lb", recentTops=[] } = await readJSON(req);
-    const body = {
-      model: "gpt-4o-mini",
-      temperature: 0.2,
-      messages: [
-        { role:"system", content:
-`Plan warm-up sets to reach working weight smoothly.
-Return 2–5 steps. Use % and exact weight (rounded to nearest 5 ${units} if ${units==="lb"?"true":"false"}).
-Keep total reps low-moderate.
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const { name = "", units = "lb", target = null } =
+      JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 
-Return ONLY JSON:
-{"warmups":[{"percent": number, "weight": number, "reps": number}]}
-`
-        },
-        { role:"user", content: JSON.stringify({ name, workingWeight, units, recentTops }) }
-      ]
-    };
+    const title = `Warm-up for ${name || "this lift"}`;
+    const U = units || "lb";
 
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
-      method:"POST",
-      headers:{ Authorization:`Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type":"application/json" },
-      body: JSON.stringify(body)
-    });
-    const j = await r.json();
-    const raw = j?.choices?.[0]?.message?.content || "{}";
-    let out = {};
-    try { out = JSON.parse(raw); } catch {}
-    res.status(200).json({ ok:true, warmups: Array.isArray(out?.warmups)? out.warmups : [] });
+    // If a target working weight is available, build % ramp based on it
+    if (typeof target === "number" && isFinite(target) && target > 0) {
+      const t = target;
+      // Mild, joint-friendly ramp (skip empty bar if t is very light)
+      const steps = [
+        { p: 0.40, reps: 8 },
+        { p: 0.60, reps: 5 },
+        { p: 0.75, reps: 3 },
+        { p: 0.85, reps: 1 }
+      ];
+      const lines = steps.map(s => {
+        const w = roundToPlate(s.p * t, U);
+        return `• ~${Math.round(s.p * 100)}% × ${s.reps}  → ~${w}${U}`;
+      });
+      const text = `${title}\n${lines.join("\n")}\nThen first work set at ~1–2 RIR.`;
+      return res.status(200).json({ ok:true, text });
+    }
+
+    // Generic fallback (works even with zero history)
+    const generic = `${title}
+• Easy ramp: light × 10–15, then ~45% × 8, ~60% × 5, ~75–80% × 2–3
+• Stop warm-ups once you feel ready; first work set should start near 1–2 RIR.`;
+    return res.status(200).json({ ok:true, text: generic });
   } catch {
-    res.status(200).json({ ok:false, warmups: [] });
+    return res.status(200).json({ ok:false, text: "" });
   }
 }
-async function readJSON(req){ const a=[]; for await(const c of req) a.push(c); return JSON.parse(Buffer.concat(a).toString("utf8")||"{}"); }
+
+function roundToPlate(x, units) {
+  const inc = units === "kg" ? 2.5 : 5; // simple plate math
+  return Math.max(0, Math.round(x / inc) * inc);
+}

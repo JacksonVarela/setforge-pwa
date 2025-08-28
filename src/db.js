@@ -1,12 +1,8 @@
 // src/db.js
 import { db } from "./firebase";
-import {
-  doc, onSnapshot, setDoc, serverTimestamp,
-} from "firebase/firestore";
+import { doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 
-// Firestore doc: users/{uid}
-// Fields: { split: {...} | null, sessions: [...], updatedAt }
-
+// Subscribe to main user doc changes (split/sessions)
 export function subscribeUserState(uid, onChange) {
   const ref = doc(db, "users", uid);
   return onSnapshot(ref, (snap) => {
@@ -14,6 +10,7 @@ export function subscribeUserState(uid, onChange) {
     onChange({
       split: data.split || null,
       sessions: Array.isArray(data.sessions) ? data.sessions : [],
+      workDraft: data.workDraft || null,
     });
   });
 }
@@ -26,4 +23,15 @@ export async function saveSplit(uid, split) {
 export async function saveSessions(uid, sessions) {
   const ref = doc(db, "users", uid);
   await setDoc(ref, { sessions, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+// ---- Work draft (autosave in-progress workout) ----
+export async function saveWorkDraft(uid, workDraft) {
+  const ref = doc(db, "users", uid);
+  await setDoc(ref, { workDraft, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+export async function clearWorkDraft(uid) {
+  const ref = doc(db, "users", uid);
+  await setDoc(ref, { workDraft: null, updatedAt: serverTimestamp() }, { merge: true });
 }

@@ -1,59 +1,34 @@
+// src/components/ImporterAI.jsx
 import React, { useState } from "react";
-import { aiParseSplit, aiExerciseInfo } from "../utils/ai";
-import SpinnerButton from "./SpinnerButton";
+import { aiParseSplit } from "../utils/ai";
 
 export default function ImporterAI({ onConfirm, onCancel }) {
   const [raw, setRaw] = useState("");
-  const [phase, setPhase] = useState("paste"); // paste | review
+  const [phase, setPhase] = useState("paste");
   const [name, setName] = useState("Imported Split");
   const [days, setDays] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [enrichBusy, setEnrichBusy] = useState({}); // key `${di}:${ii}`
 
   async function runParse() {
     if (!raw.trim()) return;
-    setLoading(true);
     try {
-      const out = await aiParseSplit(raw); // { days: [...] }
+      const out = await aiParseSplit(raw);
       const parsedDays = (out.days || []).map((d) => ({
         id: crypto.randomUUID(),
         name: d.name || "DAY",
-        items: (d.items || d.exercises || []).map(x => ({
-          type: x.type || "exercise",
+        // items already filtered to exercises by API; still defensive:
+        items: (d.items || d.exercises || []).map((x) => ({
+          type: "exercise",
           name: x.name || "",
           sets: Number(x.sets || 3),
           low: Number(x.low || 8),
           high: Number(x.high || x.low || 12),
-          equip: x.equip || "",
-          group: x.group || "",
-          cat: x.cat || (x.isCompound ? "compound" : "isolation"),
-          ssGroup: x.ss || "",            // temporary group label from parser
-          dropsets: Number(x.dropsets || 0),
-          amrap: !!x.amrap,
-          toFailure: !!x.toFailure,
-          rir: (x.rir ?? null),
-          tempo: x.tempo || "",
-          restSec: x.restSec ?? null,
-          attachments: x.attachments || []
-        }))
+          superset: (typeof x.superset === "number") ? x.superset : null,
+        })),
       }));
-
-      // Convert ssGroup letters into consistent ids within each day
-      parsedDays.forEach((d) => {
-        const map = new Map(); // group label -> id
-        d.items.forEach((it) => {
-          if (it.type !== "exercise" || !it.ssGroup) return;
-          if (!map.has(it.ssGroup)) map.set(it.ssGroup, crypto.randomUUID());
-          it.ss = map.get(it.ssGroup);
-        });
-      });
-
       setDays(parsedDays);
       setPhase("review");
     } catch {
       alert("Could not parse. Paste plain text or try again.");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -62,7 +37,7 @@ export default function ImporterAI({ onConfirm, onCancel }) {
     if (!f) return;
     const ext = f.name.toLowerCase();
     if (!/(\.txt|\.md|\.csv|\.json)$/.test(ext)) {
-      alert("Upload .txt, .md, .csv, or .json. (DOCX/PDF: paste the text.)");
+      alert("Please upload .txt, .md, .csv, or .json. (For DOCX/PDF: paste text.)");
       e.target.value = "";
       return;
     }
@@ -71,43 +46,20 @@ export default function ImporterAI({ onConfirm, onCancel }) {
     reader.readAsText(f);
   }
 
-  async function enrichRow(dayIdx, itemIdx) {
-    const it = days[dayIdx].items[itemIdx];
-    if (!it || it.type !== "exercise" || !it.name) return;
-    const key = `${dayIdx}:${itemIdx}`;
-    setEnrichBusy((m) => ({ ...m, [key]: true }));
-    try {
-      const info = await aiExerciseInfo(it.name);
-      const next = structuredClone(days);
-      const row = next[dayIdx].items[itemIdx];
-      row.equip = row.equip || info.equip || "machine";
-      row.group = row.group || info.group || "upper";
-      row.cat = row.cat || (info.isCompound ? "compound" : "isolation");
-      row.attachments = row.attachments?.length ? row.attachments : (info.attachments || []);
-      setDays(next);
-    } catch {
-      // ignore
-    } finally {
-      setEnrichBusy((m) => ({ ...m, [key]: false }));
-    }
-  }
-
   if (phase === "paste") {
     return (
       <section className="rounded-2xl border border-neutral-800 p-4 anime-overlay bg-import">
         <div className="max-w-screen-sm mx-auto">
           <h2 className="font-semibold">Import your split</h2>
-          <p className="text-sm text-neutral-400">Paste text <em>or</em> upload a file. AI will detect days, exercises, supersets, RIR, tempo, etc.</p>
-
+          <p className="text-sm text-neutral-400">Paste text <em>or</em> upload a file. AI will detect days, exercises and supersets.</p>
           <div className="mt-3 grid gap-2">
             <input className="input" value={name} onChange={(e)=>setName(e.target.value)} placeholder="Split name" />
-            <textarea className="input h-48" value={raw} onChange={(e)=>setRaw(e.target.value)} placeholder={`PUSH A\nA1. Incline Barbell Press — 3 × 6–10\nA2. Cable Fly — 3 × 12–15\n...`} />
+            <textarea className="input h-48" value={raw} onChange={(e)=>setRaw(e.target.value)} placeholder={`PUSH A\nIncline Barbell Press — 3 × 6–10 (SS) Cable Fly — 3 × 12–15\n...`} />
             <div className="text-xs text-neutral-400">or upload:</div>
             <input type="file" accept=".txt,.md,.csv,.json" onChange={handleFile} className="text-sm" />
           </div>
-
           <div className="mt-3 flex gap-2">
-            <SpinnerButton loading={loading} className="btn-primary" onClick={runParse}>AI Parse</SpinnerButton>
+            <button className="btn-primary" onClick={runParse}>AI Parse</button>
             <button className="btn" onClick={onCancel}>Cancel</button>
           </div>
         </div>
@@ -128,25 +80,14 @@ export default function ImporterAI({ onConfirm, onCancel }) {
               const clean = days.map(d => ({
                 id: crypto.randomUUID(),
                 name: d.name || "DAY",
-                exercises: d.items
-                  .filter(x => x.type !== "heading")
-                  .map(x => ({
-                    name: x.name,
-                    sets: Number(x.sets || 3),
-                    low: Number(x.low || 8),
-                    high: Number(x.high || 12),
-                    equip: x.equip || "machine",
-                    cat: x.cat || "isolation",
-                    group: x.group || "upper",
-                    ss: x.ss || "", // persisted superset id if any
-                    dropsets: Number(x.dropsets || 0),
-                    amrap: !!x.amrap,
-                    toFailure: !!x.toFailure,
-                    rir: (x.rir ?? null),
-                    tempo: x.tempo || "",
-                    restSec: x.restSec ?? null,
-                    attachments: x.attachments || []
-                  }))
+                exercises: d.items.map(x => ({
+                  name: x.name,
+                  sets: Number(x.sets || 3),
+                  low: Number(x.low || 8),
+                  high: Number(x.high || 12),
+                  // carry superset group into split — used at startWorkout
+                  superset: (typeof x.superset === "number") ? x.superset : null,
+                }))
               }));
               onConfirm({ name, days: clean });
             }}
@@ -155,87 +96,45 @@ export default function ImporterAI({ onConfirm, onCancel }) {
           </button>
         </div>
       </div>
+
       <div className="mt-3 grid gap-3">
         {days.map((d, di) => (
           <div key={d.id} className="rounded-xl border border-neutral-800 p-3">
-            <div className="flex items-center gap-2">
-              <input className="input" value={d.name} onChange={(e) => {
-                const next = structuredClone(days);
-                next[di].name = e.target.value;
-                setDays(next);
-              }} />
-            </div>
+            <input className="input" value={d.name} onChange={(e) => {
+              const next = structuredClone(days);
+              next[di].name = e.target.value;
+              setDays(next);
+            }} />
             <div className="mt-2 grid gap-2">
               {d.items.map((it, ii) => (
                 <div key={ii} className="rounded-lg bg-neutral-900 border border-neutral-800 p-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      className="input w-auto"
-                      value={it.type}
-                      onChange={(e)=>{
-                        const next = structuredClone(days);
-                        next[di].items[ii].type = e.target.value;
-                        setDays(next);
-                      }}
-                    >
-                      <option value="exercise">Exercise</option>
-                      <option value="heading">Heading</option>
-                    </select>
                     <input className="input flex-1" value={it.name} onChange={(e)=>{
                       const next = structuredClone(days);
                       next[di].items[ii].name = e.target.value;
                       setDays(next);
                     }} placeholder="Name"/>
-                    {it.type === "exercise" && (
-                      <>
-                        <input className="input w-20" value={it.sets} onChange={(e)=>{
-                          const next = structuredClone(days);
-                          next[di].items[ii].sets = e.target.value;
-                          setDays(next);
-                        }} placeholder="sets"/>
-                        <input className="input w-20" value={it.low} onChange={(e)=>{
-                          const next = structuredClone(days);
-                          next[di].items[ii].low = e.target.value;
-                          setDays(next);
-                        }} placeholder="low"/>
-                        <input className="input w-20" value={it.high} onChange={(e)=>{
-                          const next = structuredClone(days);
-                          next[di].items[ii].high = e.target.value;
-                          setDays(next);
-                        }} placeholder="high"/>
-                        <select className="input w-auto" value={it.equip} onChange={(e)=>{
-                          const next = structuredClone(days);
-                          next[di].items[ii].equip = e.target.value;
-                          setDays(next);
-                        }}>
-                          <option value="">equip…</option>
-                          <option>barbell</option><option>dumbbell</option><option>machine</option><option>cable</option><option>smith</option><option>bodyweight</option>
-                        </select>
-                        <select className="input w-auto" value={it.group} onChange={(e)=>{
-                          const next = structuredClone(days);
-                          next[di].items[ii].group = e.target.value;
-                          setDays(next);
-                        }}>
-                          <option value="">group…</option>
-                          <option>upper</option><option>lower</option><option>push</option><option>pull</option><option>legs</option><option>core</option><option>arms</option>
-                        </select>
-
-                        <label className="flex items-center gap-1 text-xs">
-                          SS grp:
-                          <input className="input w-16" value={it.ssGroup||""} onChange={(e)=>{
-                            const next = structuredClone(days);
-                            next[di].items[ii].ssGroup = e.target.value;
-                            setDays(next);
-                          }}/>
-                        </label>
-
-                        <SpinnerButton
-                          loading={!!enrichBusy[`${di}:${ii}`]}
-                          className="btn"
-                          onClick={() => enrichRow(di, ii)}
-                        >AI fill</SpinnerButton>
-                      </>
-                    )}
+                    <input className="input w-20" value={it.sets} onChange={(e)=>{
+                      const next = structuredClone(days);
+                      next[di].items[ii].sets = e.target.value;
+                      setDays(next);
+                    }} placeholder="sets"/>
+                    <input className="input w-20" value={it.low} onChange={(e)=>{
+                      const next = structuredClone(days);
+                      next[di].items[ii].low = e.target.value;
+                      setDays(next);
+                    }} placeholder="low"/>
+                    <input className="input w-20" value={it.high} onChange={(e)=>{
+                      const next = structuredClone(days);
+                      next[di].items[ii].high = e.target.value;
+                      setDays(next);
+                    }} placeholder="high"/>
+                    <input className="input w-24" value={it.superset ?? ""} onChange={(e)=>{
+                      const next = structuredClone(days);
+                      const v = e.target.value.trim();
+                      next[di].items[ii].superset = v === "" ? null : Number(v);
+                      setDays(next);
+                    }} placeholder="SS grp"/>
                     <button className="btn" onClick={()=>{
                       const next = structuredClone(days);
                       next[di].items.splice(ii,1);
@@ -246,9 +145,9 @@ export default function ImporterAI({ onConfirm, onCancel }) {
               ))}
               <button className="btn" onClick={()=>{
                 const next = structuredClone(days);
-                next[di].items.push({ type:"exercise", name:"", sets:3, low:8, high:12, equip:"machine", group:"upper", ssGroup:"", attachments:[] });
+                next[di].items.push({ name:"", sets:3, low:8, high:12, superset:null });
                 setDays(next);
-              }}>+ Add item</button>
+              }}>+ Add exercise</button>
             </div>
           </div>
         ))}

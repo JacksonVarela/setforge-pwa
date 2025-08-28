@@ -15,23 +15,17 @@ import ErrorBoundary from "./components/ErrorBoundary";
 
 import { aiSuggestNext, aiCoachNote, aiDescribe, aiWarmupPlan, aiRest } from "./utils/ai";
 
-// --------- small localStorage helper ----------
+// ---------- helpers ----------
 function useLocalState(key, initial) {
   const [val, setVal] = useState(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : initial;
-    } catch { return initial; }
+    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : initial; }
+    catch { return initial; }
   });
-  useEffect(() => {
-    try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
-  }, [key, val]);
+  useEffect(() => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }, [key, val]);
   return [val, setVal];
 }
-
-// ---------- utils ----------
-function uid() { return (crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)); }
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+const uid = () => (crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
+const todayISO = () => new Date().toISOString().slice(0, 10);
 
 // ---------- templates ----------
 const TEMPLATES = [
@@ -177,7 +171,6 @@ function LoginScreen() {
         <p className="text-center text-neutral-400">Sign in to get started</p>
 
         <div className="mt-4 grid gap-2">
-          {/* font-size 16px to avoid iOS zoom */}
           <input className="input" style={{fontSize:16}} placeholder="Email" value={email} onChange={(e)=>setEmail(e.target.value)} type="email" />
           <input className="input" style={{fontSize:16}} placeholder="Password" value={pass} onChange={(e)=>setPass(e.target.value)} type="password" />
           {mode === "signin" && <button className="btn-primary" onClick={doSignIn}>Sign in</button>}
@@ -200,7 +193,7 @@ function LoginScreen() {
   );
 }
 
-// ---------- small async button ----------
+// Small async button (uses “…” while busy)
 function AsyncButton({ label, onClick }) {
   const [busy, setBusy] = useState(false);
   return (
@@ -210,17 +203,15 @@ function AsyncButton({ label, onClick }) {
       onClick={async () => {
         if (busy) return;
         setBusy(true);
-        try { await onClick?.(); }
-        catch (e) { console.error(label, e); alert(`${label} failed.`); }
+        try { await onClick?.(); } catch (e) { console.error(label, e); alert(`${label} failed.`); }
         finally { setBusy(false); }
       }}
     >
-      {busy ? <span className="spinner" /> : label}
+      {busy ? "…" : label}
     </button>
   );
 }
 
-// ---------- main app ----------
 export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState(null);
@@ -229,25 +220,19 @@ export default function App() {
   const [units, setUnits] = useLocalState("sf.units", "lb");
   const [split, setSplit] = useLocalState("sf.split", null);
   const [sessions, setSessions] = useLocalState("sf.sessions", []);
-  const [work, setWork] = useLocalState("sf.work", null);
+  const [work, setWork] = useLocalState("sf.work", null); // { id, date, dayName, entries[], links? }
 
   const [showImporter, setShowImporter] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u || null);
-      setAuthReady(true);
-    });
+    const unsub = onAuthStateChanged(auth, (u) => { setUser(u || null); setAuthReady(true); });
     return unsub;
   }, []);
 
-  // Mobile-first: compact mode + header wrapping
+  // Header fits mobile
   useEffect(() => {
-    const apply = () => {
-      const small = window.innerWidth <= 430;
-      document.body.classList.toggle("compact", !!small);
-    };
+    const apply = () => document.body.classList.toggle("compact", window.innerWidth <= 430);
     apply();
     window.addEventListener("resize", apply);
     return () => window.removeEventListener("resize", apply);
@@ -259,44 +244,37 @@ export default function App() {
   }
 
   // Defensive split shape
-  useEffect(() => {
-    if (split && !Array.isArray(split?.days)) setSplit(null);
-  }, [split, setSplit]);
+  useEffect(() => { if (split && !Array.isArray(split?.days)) setSplit(null); }, [split, setSplit]);
 
-  // ----- logging helpers -----
+  // ---------- logging ----------
   async function startWorkoutFor(dayIdx) {
     if (!split || !Array.isArray(split.days)) return;
-    const day = split.days[dayIdx];
-    if (!day) return;
+    const day = split.days[dayIdx]; if (!day) return;
 
-    // build entries
     const entries = (day.exercises || []).map((ex) => {
-      const sets = Array.from({ length: Number(ex.sets || 3) }, () => ({ weight: "", reps: "", fail: false }));
+      const sets = Array.from({ length: Number(ex.sets || 3) }, () => ({ weight: "", reps: "", fail: false, isDrop:false }));
       return {
         name: ex.name || "Exercise",
         low: ex.low ?? 8,
         high: ex.high ?? 12,
+        equip: ex.equip || "",
         sets,
-        restText: "…" // will be filled below
+        restText: "…",
+        supersetWith: null, // index it links to
       };
     });
-    const base = { id: uid(), date: todayISO(), dayName: day.name || `Day ${dayIdx+1}`, entries };
+    const base = { id: uid(), date: todayISO(), dayName: day.name || `Day ${dayIdx+1}`, entries, links: {} };
     setWork(base);
 
-    // fetch rest advice per exercise (inline; no button)
+    // Inline rest: fetch per exercise
     try {
       const results = await Promise.all(entries.map(e => aiRest({ name: e.name })));
       const next = structuredClone(base);
-      next.entries.forEach((e, i) => {
-        e.restText = results[i]?.text || (e.low <= 8 ? "Rest ~2–3 min" : "Rest ~60–90s");
-      });
+      next.entries.forEach((e, i) => { e.restText = results[i]?.text || (e.low <= 8 ? "Rest ~2–3 min" : "Rest ~60–90s"); });
       setWork(next);
     } catch {
-      // fallback if API fails
       const next = structuredClone(base);
-      next.entries.forEach((e) => {
-        e.restText = e.low <= 8 ? "Rest ~2–3 min" : "Rest ~60–90s";
-      });
+      next.entries.forEach((e) => { e.restText = e.low <= 8 ? "Rest ~2–3 min" : "Rest ~60–90s"; });
       setWork(next);
     }
   }
@@ -307,44 +285,91 @@ export default function App() {
     setWork(null);
     alert("Session saved.");
   }
-  function discardWorkout() {
-    if (confirm("Discard current session?")) setWork(null);
-  }
+  function discardWorkout() { if (confirm("Discard current session?")) setWork(null); }
 
-  // ----- split helpers -----
-  function applyTemplate(t) {
-    if (split && !confirm("You already have a split. Overwrite it?")) return;
-    const days = (t.days || []).map((d) => ({
-      id: uid(),
-      name: d.name || "DAY",
-      exercises: (d.exercises || []).map((x) => ({ ...x })),
-    }));
-    setSplit({ name: t.name, days });
-    setShowTemplates(false);
-    setTab("log");
+  // Superset linking
+  function linkSuperset(aIdx, bIdx) {
+    if (!work) return;
+    if (aIdx === bIdx) return;
+    const next = structuredClone(work);
+    next.entries[aIdx].supersetWith = bIdx;
+    next.entries[bIdx].supersetWith = aIdx;
+    // Adjust rest text for both
+    const labelA = next.entries[bIdx].name;
+    const labelB = next.entries[aIdx].name;
+    next.entries[aIdx].restText = `Alternate with “${labelA}”. Rest ~45–75s between moves (~90–120s per pair).`;
+    next.entries[bIdx].restText = `Alternate with “${labelB}”. Rest ~45–75s between moves (~90–120s per pair).`;
+    setWork(next);
   }
-  function onImportConfirm(payload) {
-    if (!payload || !Array.isArray(payload?.days)) {
-      alert("Import failed. Try a simpler paste or a different file.");
-      return;
+  function unlinkSuperset(idx) {
+    if (!work) return;
+    const next = structuredClone(work);
+    const peer = next.entries[idx].supersetWith;
+    next.entries[idx].supersetWith = null;
+    if (peer != null && next.entries[peer]) next.entries[peer].supersetWith = null;
+    // Optional: restore default rest text
+    const e = next.entries[idx];
+    next.entries[idx].restText = e.low <= 8 ? "Rest ~2–3 min" : "Rest ~60–90s";
+    if (peer != null && next.entries[peer]) {
+      const p = next.entries[peer];
+      next.entries[peer].restText = p.low <= 8 ? "Rest ~2–3 min" : "Rest ~60–90s";
     }
-    if (split && !confirm("You already have a split. Overwrite it?")) return;
-    setSplit({ name: payload.name || "Imported Split", days: payload.days });
-    setShowImporter(false);
-    setTab("log");
+    setWork(next);
   }
 
-  // ----------- RENDER -----------
+  // Drop set add (adds a drop row after the selected set)
+  function addDropSet(ei, si) {
+    if (!work) return;
+    const next = structuredClone(work);
+    const sets = next.entries[ei].sets;
+    const base = sets[si];
+    const prevW = parseFloat((base?.weight ?? "").toString());
+    const dropW = isFinite(prevW) && prevW > 0 ? Math.max(0, Math.round(prevW * 0.85)) : "";
+    const drop = { weight: dropW, reps: "", fail: false, isDrop: true };
+    sets.splice(si + 1, 0, drop);
+    setWork(next);
+  }
+
+  // Build history for Suggest from saved sessions (last 6 appearances)
+  function historyFor(name) {
+    const hist = [];
+    for (const s of sessions) {
+      for (const e of (s.entries || [])) {
+        if (String(e.name).toLowerCase() === String(name).toLowerCase()) {
+          for (const set of (e.sets || [])) {
+            const w = Number(set.weight); const r = Number(set.reps);
+            if (Number.isFinite(w) && Number.isFinite(r)) {
+              hist.push({ weight: w, reps: r, fail: !!set.fail });
+            }
+          }
+        }
+      }
+    }
+    // most recent first, cap to ~12 last sets
+    return hist.slice(0, 12);
+  }
+  function failureFlagsFor(name) {
+    const flags = [];
+    for (const s of sessions) {
+      for (const e of (s.entries || [])) {
+        if (String(e.name).toLowerCase() === String(name).toLowerCase()) {
+          flags.push(!!(e.sets || []).some(z => z.fail));
+        }
+      }
+    }
+    return flags.slice(0, 6);
+  }
+
+  // ---------- render ----------
   if (!authReady) return <div className="min-h-screen grid place-items-center text-neutral-400">Loading…</div>;
   if (!user) return <LoginScreen />;
 
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] safe-px safe-pt safe-pb">
-        {/* MOBILE-FIRST HEADER (wraps on small screens, everything fits) */}
+        {/* Header (wraps on small screens) */}
         <header className="flex flex-wrap items-center gap-2 justify-between py-3">
           <div className="text-2xl font-extrabold shrink-0">SetForge</div>
-
           <nav className="flex gap-2 w-full sm:w-auto order-3 sm:order-none">
             {["log", "split", "sessions", "coach"].map((t) => (
               <button
@@ -359,7 +384,6 @@ export default function App() {
               </button>
             ))}
           </nav>
-
           <div className="flex items-center gap-2 shrink-0">
             <div className="pill">
               <button onClick={() => setUnits("lb")} className={"px-2 py-1 rounded " + (units === "lb" ? "bg-neutral-700" : "")}>lb</button>
@@ -382,9 +406,7 @@ export default function App() {
                   <div className="pill">Choose day to log</div>
                   <div className="grid gap-2">
                     {split.days.map((d, i) => (
-                      <button key={d.id ?? i} className="btn" onClick={() => startWorkoutFor(i)}>
-                        Start — {d?.name ?? `Day ${i + 1}`}
-                      </button>
+                      <button key={d.id ?? i} className="btn" onClick={() => startWorkoutFor(i)}>Start — {d?.name ?? `Day ${i + 1}`}</button>
                     ))}
                   </div>
                 </div>
@@ -401,17 +423,40 @@ export default function App() {
                   <div className="grid gap-3">
                     {(work?.entries ?? []).map((e, ei) => (
                       <div key={ei} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
-                        <div className="font-semibold">
-                          {e?.name ?? "Exercise"}{" "}
-                          <span className="text-neutral-400 text-sm">
-                            ({e?.low ?? 8}–{e?.high ?? 12} reps)
-                          </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-semibold">
+                            {e?.name ?? "Exercise"}{" "}
+                            <span className="text-neutral-400 text-sm">({e?.low ?? 8}–{e?.high ?? 12} reps)</span>
+                          </div>
+                          {/* Superset control */}
+                          <div className="flex items-center gap-2">
+                            {e?.supersetWith == null ? (
+                              <select
+                                className="input w-auto"
+                                value=""
+                                onChange={(ev) => {
+                                  const val = ev.target.value;
+                                  if (val === "") return;
+                                  linkSuperset(ei, Number(val));
+                                }}
+                              >
+                                <option value="">Superset…</option>
+                                {(work.entries || []).map((other, oi) => (
+                                  oi !== ei && other.supersetWith == null ? (
+                                    <option key={oi} value={oi}>{other.name}</option>
+                                  ) : null
+                                ))}
+                              </select>
+                            ) : (
+                              <button className="btn" onClick={() => unlinkSuperset(ei)}>
+                                Unlink
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {/* Inline rest guidance */}
-                        <div className="mt-1 text-xs text-neutral-400">
-                          Rest: {e?.restText || "…"}
-                        </div>
+                        <div className="mt-1 text-xs text-neutral-400">Rest: {e?.restText || "…"}</div>
 
                         {/* Describe + Suggest + Warm-up */}
                         <div className="mt-2 flex flex-wrap gap-2">
@@ -425,20 +470,27 @@ export default function App() {
                           <AsyncButton
                             label="Suggest"
                             onClick={async () => {
+                              const hist = historyFor(e?.name || "");
+                              const fails = failureFlagsFor(e?.name || "");
                               const { next } = await aiSuggestNext({
                                 name: e?.name || "",
                                 units,
-                                history: [], // you can wire your last sessions here later
+                                history: hist,
                                 targetLow: e?.low ?? 8,
-                                targetHigh: e?.high ?? 12
+                                targetHigh: e?.high ?? 12,
+                                bodyweight: /pull-up|chin-up|dip/i.test(e?.name || ""),
+                                failureFlags: fails,
                               });
-                              alert(next?.note || "No suggestion available yet.");
+                              const parts = [];
+                              if (next?.weight != null) parts.push(`${next.weight}${units}`);
+                              if (next?.reps != null) parts.push(`${next.reps} reps`);
+                              const line = parts.length ? `Next: ${parts.join(" × ")}` : "Decision: keep approach steady.";
+                              alert(`${line}\n\nWhy: ${next?.note || "Insufficient history; aim near 1–2 RIR."}`);
                             }}
                           />
                           <AsyncButton
                             label="Warm-up"
                             onClick={async () => {
-                              // If user typed a weight for set 1, pass it as target so we produce % calculations
                               const firstWt = parseFloat((e?.sets?.[0]?.weight || "").toString());
                               const target = isFinite(firstWt) && firstWt > 0 ? firstWt : null;
                               const { text } = await aiWarmupPlan({ name: e?.name || "", units, target });
@@ -447,11 +499,11 @@ export default function App() {
                           />
                         </div>
 
+                        {/* Sets */}
                         <div className="mt-2 grid gap-2">
                           {(e?.sets ?? []).map((s, si) => (
-                            <div key={si} className="flex items-center gap-2">
-                              <span className="text-xs text-neutral-400 w-10">Set {si + 1}</span>
-                              {/* font-size 16px prevents iOS zoom */}
+                            <div key={si} className={"flex items-center gap-2 " + (s.isDrop ? "opacity-90" : "")}>
+                              <span className="text-xs text-neutral-400 w-10">{s.isDrop ? "Drop" : `Set ${si + 1}`}</span>
                               <input
                                 className="input w-24"
                                 style={{fontSize:16}}
@@ -486,6 +538,9 @@ export default function App() {
                                 />
                                 to failure
                               </label>
+                              {!s.isDrop && (
+                                <button className="btn" onClick={() => addDropSet(ei, si)}>Drop+</button>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -505,11 +560,7 @@ export default function App() {
               <div className="flex gap-2">
                 <button className="btn" onClick={() => setShowImporter(true)}>+ Import (AI)</button>
                 <button className="btn" onClick={() => setShowTemplates(true)}>Templates</button>
-                {split && (
-                  <button className="btn" onClick={() => { if (confirm("Clear your split?")) setSplit(null); }}>
-                    Clear split
-                  </button>
-                )}
+                {split && <button className="btn" onClick={() => { if (confirm("Clear your split?")) setSplit(null); }}>Clear split</button>}
               </div>
 
               {!split ? (
@@ -523,9 +574,7 @@ export default function App() {
                         <div className="font-semibold">{d?.name ?? `Day ${di+1}`}</div>
                         <ul className="mt-1 text-sm text-neutral-300 list-disc pl-5">
                           {(d.exercises || []).map((x, xi) => (
-                            <li key={xi}>
-                              {x?.name ?? "Exercise"} — {x?.sets ?? 3} × {x?.low ?? 8}–{x?.high ?? 12}
-                            </li>
+                            <li key={xi}>{x?.name ?? "Exercise"} — {x?.sets ?? 3} × {x?.low ?? 8}–{x?.high ?? 12}</li>
                           ))}
                         </ul>
                       </div>
@@ -542,7 +591,16 @@ export default function App() {
                       <button className="btn" onClick={() => setShowImporter(false)}>Close</button>
                     </div>
                     <div className="mt-3">
-                      <ImporterAI onConfirm={onImportConfirm} onCancel={() => setShowImporter(false)} />
+                      <ImporterAI onConfirm={(payload) => {
+                        if (!payload || !Array.isArray(payload?.days)) {
+                          alert("Import failed. Try a simpler paste or a different file.");
+                          return;
+                        }
+                        if (split && !confirm("You already have a split. Overwrite it?")) return;
+                        setSplit({ name: payload.name || "Imported Split", days: payload.days });
+                        setShowImporter(false);
+                        setTab("log");
+                      }} onCancel={() => setShowImporter(false)} />
                     </div>
                   </div>
                 </div>
@@ -565,7 +623,17 @@ export default function App() {
                                 {(t.days || []).length} days • {(t.days || []).reduce((a, d) => a + (d.exercises?.length || 0), 0)} exercises
                               </div>
                             </div>
-                            <button className="btn-primary" onClick={() => applyTemplate(t)}>Use this</button>
+                            <button className="btn-primary" onClick={() => {
+                              if (split && !confirm("You already have a split. Overwrite it?")) return;
+                              const days = (t.days || []).map(d => ({
+                                id: uid(),
+                                name: d.name || "DAY",
+                                exercises: (d.exercises || []).map(x => ({ ...x })),
+                              }));
+                              setSplit({ name: t.name, days });
+                              setShowTemplates(false);
+                              setTab("log");
+                            }}>Use this</button>
                           </div>
                         </div>
                       ))}
@@ -590,11 +658,14 @@ export default function App() {
                       <div className="mt-2 grid gap-1 text-sm">
                         {(s?.entries || []).map((e, i) => (
                           <div key={i} className="text-neutral-300">
-                            <div className="font-medium">{e?.name ?? "Exercise"}</div>
+                            <div className="font-medium">
+                              {e?.name ?? "Exercise"}
+                              {e?.supersetWith != null ? <span className="text-xs text-neutral-400"> — (part of superset)</span> : null}
+                            </div>
                             <div className="text-xs text-neutral-400">
                               {(e?.sets || []).map((x, xi) => (
                                 <span key={xi} className="mr-2">
-                                  [{(x?.weight ?? "?")}{units} × {(x?.reps ?? "?")}{x?.fail ? " F" : ""}]
+                                  [{(x?.weight ?? "?")}{units} × {(x?.reps ?? "?")}{x?.fail ? " F" : ""}{x?.isDrop ? " DS" : ""}]
                                 </span>
                               ))}
                             </div>
@@ -612,7 +683,7 @@ export default function App() {
           {tab === "coach" && (
             <section className="grid gap-4">
               <h2 className="text-xl font-semibold">Coach</h2>
-              <CoachChat units={units} />
+              <CoachChat units={units} day={work?.dayName || ""} />
             </section>
           )}
         </main>

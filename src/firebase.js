@@ -3,12 +3,9 @@ import { initializeApp, getApps } from "firebase/app";
 import {
   getAuth,
   setPersistence,
-  browserLocalPersistence, // stays signed in across restarts
+  browserLocalPersistence, // keep signed in across browser restarts
 } from "firebase/auth";
-import {
-  getFirestore,
-  enableIndexedDbPersistence,
-} from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 
 export function initFirebaseApp() {
   if (getApps().length) return getApps()[0];
@@ -28,18 +25,14 @@ export function initFirebaseApp() {
 
   const app = initializeApp(cfg);
 
-  // Persistent login across restarts:
+  // Keep user signed in on this device
   const auth = getAuth(app);
   setPersistence(auth, browserLocalPersistence).catch(() => {});
-
-  // Firestore + offline cache so it works at the gym:
-  const db = getFirestore(app);
-  enableIndexedDbPersistence(db).catch(() => {});
 
   return app;
 }
 
-export const app = initFirebaseApp();
+const app = initFirebaseApp();
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export default app;

@@ -8,7 +8,7 @@ import {
   signOut as fbSignOut,
 } from "firebase/auth";
 
-import { subscribeUserState, saveSplit, saveSessions } from "./db";
+import { subscribeUserState, saveSplit, saveSessions, saveWorkDraft, clearWorkDraft } from "./db";
 import ImporterAI from "./components/ImporterAI";
 import CoachChat from "./components/CoachChat";
 import { aiDescribe, aiSuggestNext, aiCoachNote } from "./utils/ai";
@@ -206,6 +206,22 @@ function LoginScreen() {
   );
 }
 
+// ---------- simple modal ----------
+function Modal({ open, onClose, children, title = "Note" }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-3">
+      <div className="w-full max-w-lg rounded-2xl bg-neutral-900 border border-neutral-700 p-4">
+        <div className="flex items-center justify-between">
+          <div className="font-semibold">{title}</div>
+          <button className="btn" onClick={onClose}>Close</button>
+        </div>
+        <div className="mt-3 text-sm">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- main app ----------
 export default function App() {
   const [authReady, setAuthReady] = useState(false);
@@ -213,12 +229,22 @@ export default function App() {
 
   const [tab, setTab] = useLocalState("sf.tab", "log");
   const [units, setUnits] = useLocalState("sf.units", "lb");
-  const [split, setSplit] = useLocalState("sf.split", null); // {name, days[ {name, exercises[ {name, sets, low, high, ss?} ]} ]}
+  const [split, setSplit] = useLocalState("sf.split", null);
   const [sessions, setSessions] = useLocalState("sf.sessions", []);
   const [work, setWork] = useLocalState("sf.work", null);
 
   const [showImporter, setShowImporter] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+
+  // compact mode toggle
+  const [compact, setCompact] = useLocalState("sf.compact", true);
+
+  // resume banner / draft from cloud
+  const [resumeDraft, setResumeDraft] = useState(null);
+
+  // AI session note modal
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteText, setNoteText] = useState("");
 
   // auth & firestore subscription
   useEffect(() => {
@@ -231,12 +257,14 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    const unsub = subscribeUserState(user.uid, ({ split: s, sessions: ss }) => {
+    const unsub = subscribeUserState(user.uid, ({ split: s, sessions: ss, workDraft }) => {
       if (s) setSplit(s);
       if (Array.isArray(ss) && ss.length) setSessions(ss);
+      // If there's a remote draft and we don't currently have local work, offer resume
+      if (workDraft && !work) setResumeDraft(workDraft);
     });
     return unsub;
-  }, [user]);
+  }, [user]); // eslint-disable-line
 
   // debounced cloud sync for split/sessions
   useEffect(() => {
@@ -249,6 +277,33 @@ export default function App() {
     const t = setTimeout(() => { saveSessions(user.uid, sessions || [] ).catch(()=>{}); }, 600);
     return () => clearTimeout(t);
   }, [user, sessions]);
+
+  // ---- AUTO-SAVE WORK DRAFT (every 10s) ----
+  const lastDraftRef = useRef("");
+  useEffect(() => {
+    if (!user) return;
+    const id = setInterval(() => {
+      if (!work) return;
+      const payload = { ...work, units };
+      const ser = JSON.stringify(payload);
+      if (ser !== lastDraftRef.current) {
+        lastDraftRef.current = ser;
+        saveWorkDraft(user.uid, payload).catch(()=>{});
+      }
+    }, 10000);
+    return () => clearInterval(id);
+  }, [user, work, units]);
+
+  // Apply / discard draft
+  function applyResume() {
+    if (!resumeDraft) return;
+    setWork(resumeDraft);
+    setResumeDraft(null);
+  }
+  async function discardResume() {
+    setResumeDraft(null);
+    if (user) await clearWorkDraft(user.uid).catch(()=>{});
+  }
 
   async function signOut() {
     try { await fbSignOut(auth); } catch {}
@@ -266,14 +321,34 @@ export default function App() {
     });
     setWork({ id: uid(), date: todayISO(), dayName: day.name, entries });
   }
-  function saveWorkout() {
+
+  async function saveWorkout() {
     if (!work) return;
-    setSessions([{ ...work }, ...sessions].slice(0, 200));
+    const newSessions = [{ ...work }, ...sessions].slice(0, 200);
+    setSessions(newSessions);
     setWork(null);
+
+    // clear cloud draft
+    if (user) await clearWorkDraft(user.uid).catch(()=>{});
+
+    // fetch short AI note (non-blocking UI, then modal)
+    try {
+      const recent = newSessions.slice(1, 6); // last 5 excluding just-saved
+      const advice = await aiCoachNote(newSessions[0], recent, units, work?.dayName || "");
+      if (advice) {
+        setNoteText(advice);
+        setNoteOpen(true);
+      }
+    } catch {}
+
     alert("Session saved.");
   }
+
   function discardWorkout() {
-    if (confirm("Discard current session?")) setWork(null);
+    if (confirm("Discard current session?")) {
+      setWork(null);
+      if (user) clearWorkDraft(user.uid).catch(()=>{});
+    }
   }
 
   function applyTemplate(t) {
@@ -288,6 +363,7 @@ export default function App() {
     setShowTemplates(false);
     setTab("log");
   }
+
   function onImportConfirm(payload) {
     if (split && !confirm("You already have a split. Overwrite it?")) return;
     setSplit(payload);
@@ -304,7 +380,7 @@ export default function App() {
       const b = list[i+1];
       if (a.ss && b && b.ss && a.ss === b.ss) {
         blocks.push({ type: "ss", aIndex: i, bIndex: i+1 });
-        i++; // skip next
+        i++;
       } else {
         blocks.push({ type: "solo", aIndex: i });
       }
@@ -312,11 +388,39 @@ export default function App() {
     return blocks;
   }
 
+  // Attach AI note to the most recent session
+  function attachNoteToLast() {
+    if (!noteText) return;
+    const copy = [...sessions];
+    if (!copy.length) return;
+    copy[0] = { ...copy[0], note: noteText };
+    setSessions(copy);
+    setNoteOpen(false);
+  }
+
+  // Compact mode class
+  useEffect(() => {
+    document.documentElement.classList.toggle("compact", !!compact);
+  }, [compact]);
+
   if (!authReady) return <div className="min-h-screen grid place-items-center text-neutral-400">Loading…</div>;
   if (!user) return <LoginScreen />;
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] safe-px safe-pt safe-pb">
+      {/* resume banner */}
+      {resumeDraft && !work && tab === "log" && (
+        <div className="banner">
+          <div>
+            Resume in-progress session — <strong>{resumeDraft.dayName}</strong> ({resumeDraft.date})
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-primary" onClick={applyResume}>Resume</button>
+            <button className="btn" onClick={discardResume}>Discard</button>
+          </div>
+        </div>
+      )}
+
       {/* top bar */}
       <header className="flex items-center gap-3 justify-between py-3">
         <div className="text-2xl font-extrabold">SetForge</div>
@@ -341,6 +445,10 @@ export default function App() {
             <button onClick={() => setUnits("lb")} className={"px-2 py-1 rounded " + (units === "lb" ? "bg-neutral-700" : "")}>lb</button>
             <button onClick={() => setUnits("kg")} className={"px-2 py-1 rounded " + (units === "kg" ? "bg-neutral-700" : "")}>kg</button>
           </div>
+          <label className="pill cursor-pointer">
+            <input type="checkbox" className="mr-1" checked={!!compact} onChange={(e)=>setCompact(e.target.checked)} />
+            compact
+          </label>
           <button className="btn" onClick={signOut}>Sign out</button>
         </div>
       </header>
@@ -357,7 +465,7 @@ export default function App() {
                 <div className="pill">Choose day to log</div>
                 <div className="grid gap-2">
                   {split.days.map((d, i) => (
-                    <button key={d.id} className="btn" onClick={() => { startWorkoutFor(i); }}>
+                    <button key={d.id} className="btn" onClick={() => { setWork(null); /* reset */ startWorkoutFor(i); }}>
                       Start — {d.name}
                     </button>
                   ))}
@@ -667,9 +775,10 @@ export default function App() {
               <div className="text-neutral-400">No sessions yet.</div>
             ) : (
               <div className="grid gap-3">
-                {sessions.map((s) => (
-                  <div key={s.id} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
+                {sessions.map((s, idx) => (
+                  <div key={s.id || idx} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
                     <div className="font-semibold">{s.dayName} — {s.date}</div>
+                    {s.note ? <div className="mt-2 text-sm text-neutral-300 italic">“{s.note}”</div> : null}
                     <div className="mt-2 grid gap-1 text-sm">
                       {s.entries.map((e, i) => (
                         <div key={i} className="text-neutral-300">
@@ -702,6 +811,15 @@ export default function App() {
       <footer className="mt-8 text-center text-xs text-neutral-500">
         Offline-ready • Data syncs when online
       </footer>
+
+      {/* AI Note modal */}
+      <Modal open={noteOpen} onClose={() => setNoteOpen(false)} title="Coach note">
+        <div className="whitespace-pre-wrap">{noteText || "No note."}</div>
+        <div className="mt-3 flex justify-end gap-2">
+          <button className="btn" onClick={() => setNoteOpen(false)}>Dismiss</button>
+          <button className="btn-primary" onClick={attachNoteToLast}>Attach to latest session</button>
+        </div>
+      </Modal>
     </div>
   );
 }

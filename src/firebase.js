@@ -3,9 +3,8 @@ import { initializeApp, getApps } from "firebase/app";
 import {
   getAuth,
   setPersistence,
-  browserLocalPersistence, // keep signed in across browser restarts
+  browserLocalPersistence,  // <<< keep across restarts
 } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
 
 export function initFirebaseApp() {
   if (getApps().length) return getApps()[0];
@@ -25,14 +24,11 @@ export function initFirebaseApp() {
 
   const app = initializeApp(cfg);
 
-  // Keep user signed in on this device
+  // Persist login across browser restarts on this device
   const auth = getAuth(app);
   setPersistence(auth, browserLocalPersistence).catch(() => {});
 
   return app;
 }
 
-const app = initFirebaseApp();
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export default app;
+export const auth = getAuth(initFirebaseApp());

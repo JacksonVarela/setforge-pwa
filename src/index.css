@@ -1,274 +1,64 @@
-/* Tailwind base */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* =========
-   Base theme
-   ========= */
-:root {
-  color-scheme: dark;
-  --bg: #0a0a0a;
-  --bg-2: #111213;
-  --text: #f5f5f5;
-  --muted: #a3a3a3;
-  --accent: #ef4444; /* red-500 */
-  --card: #121212;
-  --border: #2a2a2a;
+/* Theme */
+:root{
+  color-scheme:dark;
+  --bg:#0a0a0a; --bg-2:#111213; --text:#f5f5f5; --muted:#a3a3a3;
+  --accent:#ef4444; --card:#121212; --border:#2a2a2a;
 }
-
-html, body, #root { height: 100%; }
-html, body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+html,body,#root{height:100%}
+html,body{
+  background:var(--bg); color:var(--text);
+  font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
 }
+.page{min-height:100svh} .fullscreen{min-height:100svh}
 
-/* Helpful utility to make a full-height section */
-.fullscreen { min-height: 100svh; }
+/* Backgrounds used on login/import */
+.bg-login,.bg-import{background-size:cover;background-position:center;background-repeat:no-repeat}
+.bg-login{background-image:url('/images/bg-anime-login.webp')}
+.bg-import{background-image:url('/images/bg-anime-import.webp')}
+.anime-overlay{position:relative}
+.anime-overlay::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 90% at 50% 10%,rgba(0,0,0,.15) 0%,rgba(0,0,0,.35) 45%,rgba(0,0,0,.65) 100%)}
+.anime-overlay>*{position:relative;z-index:1}
 
-/* =========
-   Page wrappers
-   ========= */
-.page { min-height: 100svh; }
+/* Sticker */
+.coach-sticker{position:fixed;right:max(1rem,env(safe-area-inset-right));bottom:max(1rem,env(safe-area-inset-bottom));width:clamp(84px,22vw,168px);aspect-ratio:1/1;background:url('/images/coach-sticker.webp') center/contain no-repeat;filter:drop-shadow(0 6px 14px rgba(0,0,0,.45));animation:floaty 5.5s ease-in-out infinite;pointer-events:none;z-index:30}
+@keyframes floaty{0%{transform:translateY(0)}50%{transform:translateY(-6px)}100%{transform:translateY(0)}}
 
-/* =========
-   Full-viewport background images for login/import
-   (has a gradient fallback so it never looks white)
-   ========= */
-.bg-login, .bg-import {
-  background-color: #0b0b0b;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-}
+/* Glass */
+.glass{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);background:rgba(10,10,10,.55);border:1px solid rgba(255,255,255,.06);border-radius:.9rem}
+.glass-strong{backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);background:rgba(10,10,10,.72);border:1px solid rgba(255,255,255,.08);border-radius:1rem}
 
-/* Requires files in /public/images */
-.bg-login {
-  background-image:
-    radial-gradient(120% 90% at 50% 10%, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.35) 45%, rgba(0,0,0,0.65) 100%),
-    url('/images/bg-anime-login.webp');
-}
-.bg-import {
-  background-image:
-    radial-gradient(120% 90% at 50% 10%, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.35) 45%, rgba(0,0,0,0.65) 100%),
-    url('/images/bg-anime-import.webp');
-}
+/* Controls */
+.btn{@apply inline-flex items-center justify-center px-3 py-2 rounded-xl text-sm border transition;
+  background:#181818;border-color:var(--border);min-height:44px}
+.btn:hover{background:#1f1f1f}
+.btn-primary{background:#fff;color:#111;border-color:#fff;min-height:44px}
+.btn-primary:hover{filter:brightness(.96)}
+.btn-ghost{background:transparent;border-color:var(--border)}
+.pill{@apply inline-flex items-center px-2 py-1 rounded-lg text-xs; background:#1a1a1a;border:1px solid var(--border);color:var(--muted);min-height:32px}
+.input{@apply w-full px-3 py-2 rounded-lg text-sm; background:#141414;color:var(--text);border:1px solid var(--border);min-height:44px}
+.input::placeholder{color:#7a7a7a}
 
-/* Subtle dark vignette overlay for readability over busy art */
-.anime-overlay { position: relative; }
-.anime-overlay::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(
-    120% 90% at 50% 10%,
-    rgba(0,0,0,0.15) 0%,
-    rgba(0,0,0,0.35) 45%,
-    rgba(0,0,0,0.65) 100%
-  );
-}
+/* Scrollbars */
+*{scrollbar-width:thin;scrollbar-color:#3a3a3a transparent}
+*::-webkit-scrollbar{width:8px;height:8px}
+*::-webkit-scrollbar-thumb{background:#3a3a3a;border-radius:999px}
 
-/* Ensure children render above overlay */
-.anime-overlay > * { position: relative; z-index: 1; }
+/* Safe-area padding */
+.safe-px{padding-left:max(.75rem,env(safe-area-inset-left));padding-right:max(.75rem,env(safe-area-inset-right))}
+.safe-pt{padding-top:max(1rem,env(safe-area-inset-top))}
+.safe-pb{padding-bottom:max(1rem,env(safe-area-inset-bottom))}
 
-/* =========
-   Coach sticker / avatar (bottom-right)
-   ========= */
-.coach-sticker {
-  position: fixed;
-  right: max(1rem, env(safe-area-inset-right));
-  bottom: max(1rem, env(safe-area-inset-bottom));
-  width: clamp(84px, 22vw, 168px);
-  aspect-ratio: 1/1;
-  background-image: url('/images/coach-sticker.webp');
-  background-size: contain;
-  background-position: center;
-  background-repeat: no-repeat;
-  filter: drop-shadow(0 6px 14px rgba(0,0,0,0.45));
-  animation: floaty 5.5s ease-in-out infinite;
-  pointer-events: none; /* decorative */
-  z-index: 30;
-}
-@keyframes floaty {
-  0%   { transform: translateY(0px); }
-  50%  { transform: translateY(-6px); }
-  100% { transform: translateY(0px); }
-}
+/* Compact on small phones */
+body.compact header{gap:8px}
+body.compact nav button{flex:1}
+body.compact .input{font-size:16px} /* prevent iOS zoom */
 
-/* =========
-   “Glass” cards (nice over art)
-   ========= */
-.glass {
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  background: rgba(10,10,10,0.55);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 0.9rem;
-}
-.glass-strong {
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  background: rgba(10,10,10,0.72);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 1rem;
-}
-
-/* =========
-   Buttons/Input helpers (no @apply to keep PostCSS happy)
-   ========= */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem 0.75rem; /* px-3 py-2 */
-  border-radius: 0.75rem;  /* rounded-xl */
-  font-size: 0.875rem;     /* text-sm */
-  line-height: 1;
-  border: 1px solid var(--border);
-  background: #181818;
-  color: var(--text);
-  transition: background .2s ease, color .2s ease, border-color .2s ease, filter .2s ease;
-}
-.btn:hover { background:#1f1f1f; }
-
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.75rem;
-  font-size: 0.875rem;
-  line-height: 1;
-  border: 1px solid #ffffff;
-  background: #ffffff;
-  color: #111111;
-  transition: filter .2s ease;
-}
-.btn-primary:hover { filter: brightness(0.96); }
-
-.btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.75rem;
-  font-size: 0.875rem;
-  line-height: 1;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text);
-}
-
-.pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.5rem;
-  font-size: 0.75rem; /* text-xs */
-  background: #1a1a1a;
-  border: 1px solid var(--border);
-  color: var(--muted);
-}
-
-.input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  background: #141414;
-  color: var(--text);
-  border: 1px solid var(--border);
-}
-.input::placeholder { color:#7a7a7a; }
-
-/* Scrollbar (desktop polish) */
-* { scrollbar-width: thin; scrollbar-color: #3a3a3a transparent; }
-*::-webkit-scrollbar { width:8px; height:8px; }
-*::-webkit-scrollbar-thumb { background:#3a3a3a; border-radius:999px; }
-
-/* Safe padding for mobile notches */
-.safe-px {
-  padding-left: max(0.75rem, env(safe-area-inset-left));
-  padding-right: max(0.75rem, env(safe-area-inset-right));
-}
-.safe-pt { padding-top: max(1rem, env(safe-area-inset-top)); }
-.safe-pb { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
-
-/* =========
-   Resume banner (cloud draft)
-   ========= */
-.banner {
-  position: sticky;
-  top: 0;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .5rem;
-  padding: .5rem .75rem;
-  background: #0f172a;
-  border: 1px solid var(--border);
-  border-radius: .75rem;
-  margin-bottom: .5rem;
-}
-
-/* =========
-   Bottom action bar (mobile)
-   ========= */
-.bottombar {
-  position: sticky;
-  bottom: 0;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .75rem;
-  padding: .5rem .75rem;
-  background: #0b0b0b;
-  border: 1px solid var(--border);
-  border-radius: .85rem;
-}
-
-/* =========
-   Spinner (for async buttons)
-   ========= */
-.spinner {
-  width: 1rem;
-  height: 1rem;
-  display: inline-block;
-  border: 2px solid #aaa;
-  border-top-color: transparent;
-  border-radius: 999px;
-  animation: spin 0.75s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* =========
-   Compact mode (mobile density)
-   ========= */
-.compact .btn,
-.compact .btn-primary,
-.compact .pill,
-.compact .input {
-  font-size: 13px;
-  padding: 0.4rem 0.55rem;
-  border-radius: 0.6rem;
-}
-.compact .input { padding: 0.45rem 0.6rem; }
-.compact .coach-sticker { width: clamp(72px, 18vw, 132px); }
-.compact header .text-2xl,
-.compact header .text-xl { font-size: 1.1rem; }
-
-/* Keep nav buttons tighter on tiny screens */
-.compact nav button { padding-left: .5rem; padding-right: .5rem; }
-
-/* =========
-   Small screens: prevent horizontal scroll & ensure cards fit
-   ========= */
-@media (max-width: 380px) {
-  .input { min-width: 0; }
-  .btn, .btn-primary, .pill { white-space: nowrap; }
-  .bottombar { border-radius: .7rem; }
+/* Sticky action bar */
+.sticky-bar{
+  position:sticky;bottom:0;background:rgba(10,10,10,.9);backdrop-filter:blur(8px);
+  border-top:1px solid var(--border);padding:8px;z-index:20
 }

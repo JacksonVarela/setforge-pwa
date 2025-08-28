@@ -1,22 +1,29 @@
+// /api/suggest.js
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ ok:false, error:"POST only" });
   try {
-    const { name="", history=[], targetLow=8, targetHigh=12, units="lb", bodyweight=false, rirHistory=[], failureFlags=[] } = await readJSON(req);
+    const { name="", history=[], targetLow=8, targetHigh=12, units="lb", bodyweight=false, failureFlags=[], rirHistory=[] } = await readJSON(req);
+
     const body = {
       model: "gpt-4o-mini",
-      temperature: 0.15,
+      temperature: 0.2,
       messages: [
         { role:"system", content:
-`You recommend the next-session load for hypertrophy.
-Consider last 3 sessions most; use RIR & failure flags strongly.
-If last top set exceeded top of range with RIR 0-1 → recommend ↑.
-If below low end or frequent failure → consider ↓ or identical with cue.
-Bodyweight moves may return {"weight":null,"reps":null,"note":"Use -nn ${units} assistance"}.
-
+`You recommend next-session load for hypertrophy.
+Inputs:
+- name: exercise name
+- history: last sets like [{weight:number,reps:number,fail:boolean}]
+- rirHistory: last sets RIR values or null (0–5)
+- target rep range: [targetLow, targetHigh]
+- units: lb or kg
+Rules:
+- Bias last 3–5 sets strongly; consider trends.
+- If recent sets exceeded the top of range at RIR≤1 or to failure, increase load.
+- If below range or RIR≥3, reduce load or reps; for bodyweight, suggest assistance.
+- If data sparse, be conservative and provide a simple plan.
 Return ONLY JSON:
-{"next":{"weight":number|null,"reps":number|null,"decision":"up|down|keep","note":"short reason"}} in ${units}.`
-        },
-        { role:"user", content: JSON.stringify({ name, history, targetLow, targetHigh, units, bodyweight, rirHistory, failureFlags }) }
+{"next":{"weight":number|null,"reps":number|null,"note":string,"decision":"increase|keep|decrease"}}`},
+        { role:"user", content: JSON.stringify({ name, history, rirHistory, targetLow, targetHigh, units, bodyweight, failureFlags }) }
       ]
     };
 
@@ -29,7 +36,7 @@ Return ONLY JSON:
     const raw = j?.choices?.[0]?.message?.content || "{}";
     let out = {};
     try { out = JSON.parse(raw); } catch {}
-    res.status(200).json({ ok:true, next: out?.next || { weight:null, reps:null, decision:"keep", note:"" }});
+    res.status(200).json({ ok:true, ...out });
   } catch {
     res.status(200).json({ ok:false });
   }

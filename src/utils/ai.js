@@ -5,60 +5,51 @@ async function postJSON(url, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body ?? {}),
   });
-  if (!r.ok) throw new Error(`HTTP ${r.status} on ${url}`);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
 
-// --- Split parsing / exercise metadata ---
 export async function aiParseSplit(text) {
-  const j = await postJSON("/api/parse-split", { text });
-  if (!j.ok) throw new Error("AI parse failed");
-  return { days: j.days || [] };
+  const r = await postJSON("/api/parse-split", { text });
+  if (!r.ok) throw new Error("parse failed");
+  return { days: r.days || [] };
 }
+
 export async function aiExerciseInfo(name) {
-  const j = await postJSON("/api/exercise-info", { name });
-  if (!j.ok) return {};
-  const { equip, group, isCompound, attachments } = j;
-  return { equip, group, isCompound, attachments: attachments || [] };
+  const r = await postJSON("/api/exercise-info", { name });
+  if (!r.ok) return {};
+  return r.info || {};
 }
 
-// --- Coach chat (in-app assistant) ---
 export async function coachChatSend(messages, { units = "lb", day = "" } = {}) {
-  const j = await postJSON("/api/coach-chat", { messages, units, day });
-  if (!j.ok) throw new Error("chat failed");
-  return j.reply || "";
+  const r = await postJSON("/api/coach-chat", { messages, units, day });
+  if (!r.ok) throw new Error("chat failed");
+  return r.reply || "";
 }
 
-// --- Suggestions & notes ---
-export async function aiSuggestNext({
-  name = "", history = [], targetLow = 8, targetHigh = 12, units = "lb",
-  bodyweight = false, failureFlags = [],
-} = {}) {
-  const j = await postJSON("/api/suggest", {
-    name, history, targetLow, targetHigh, units, bodyweight, failureFlags,
-  });
-  if (!j.ok) throw new Error("suggest failed");
-  return { next: j.next || { weight: null, reps: null, note: "" } };
+export async function aiSuggestNext(payload) {
+  const r = await postJSON("/api/suggest", payload);
+  if (!r.ok) throw new Error("suggest failed");
+  return r;
 }
-export async function aiCoachNote({ session = null, recent = [], units = "lb", day = "" } = {}) {
-  const j = await postJSON("/api/coach", { session, recent, units, day });
-  if (!j.ok) return { advice: "" };
-  return { advice: j.advice || "" };
-}
+
 export async function aiDescribe({ name = "", equip = "machine", cat = "iso_small" } = {}) {
-  const j = await postJSON("/api/describe", { name, equip, cat });
-  if (!j.ok) return { text: "" };
-  return { text: j.text || "" };
+  const r = await postJSON("/api/describe", { name, equip, cat });
+  return { text: r?.text || "" };
 }
 
-// --- Warm-up & Rest helpers ---
 export async function aiWarmupPlan({ name = "", units = "lb", target = null } = {}) {
-  const j = await postJSON("/api/warmup", { name, units, target });
-  if (!j.ok) return { text: "" };
-  return { text: j.text || "" };
+  const r = await postJSON("/api/warmup", { name, units, target });
+  return { text: r?.text || "" };
 }
+
 export async function aiRest({ name = "" } = {}) {
-  const j = await postJSON("/api/rest", { name });
-  if (!j.ok) return { text: "" };
-  return { text: j.text || "" };
+  const r = await postJSON("/api/rest", { name });
+  return { text: r?.text || "" };
+}
+
+// Optional (safe no-op if unused)
+export async function aiCoachNote({ session = {}, recent = [], units = "lb", day = "" } = {}) {
+  const r = await postJSON("/api/coach", { session, recent, units, day });
+  return { advice: r?.advice || "" };
 }

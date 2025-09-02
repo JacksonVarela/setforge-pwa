@@ -30,7 +30,7 @@ function useLocalState(key, initial) {
   return [val, setVal];
 }
 
-// ---------- templates (kept minimal; you can expand) ----------
+// ---------- templates (expanded) ----------
 const TEMPLATES = [
   {
     id: "ul-4d",
@@ -67,14 +67,100 @@ const TEMPLATES = [
         { name: "Cable Crunch", sets: 3, low: 10, high: 15, equip: "cable", group: "core", cat: "isolation" },
       ]},
     ],
-  }
+  },
+  {
+    id: "ppl-6d",
+    name: "PPL (6 days, high-volume)",
+    days: [
+      { id: "p1", name: "Push A", exercises: [
+        { name: "Bench Press", sets: 3, low: 5, high: 8, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Incline DB Press", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+        { name: "Overhead Press (Smith)", sets: 2, low: 6, high: 10, equip: "smith", group: "push", cat: "compound" },
+        { name: "Lateral Raise", sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+      ]},
+      { id: "p2", name: "Pull A", exercises: [
+        { name: "Weighted Pull-ups", sets: 3, low: 5, high: 8, equip: "bodyweight", group: "pull", cat: "compound" },
+        { name: "Chest-Supported Row", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+        { name: "Cable Row", sets: 2, low: 10, high: 12, equip: "cable", group: "pull", cat: "compound" },
+        { name: "Cable Curl", sets: 2, low: 10, high: 15, equip: "cable", group: "pull", cat: "isolation" },
+      ]},
+      { id: "p3", name: "Legs A", exercises: [
+        { name: "Back Squat", sets: 3, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Romanian Deadlift", sets: 3, low: 6, high: 10, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Leg Press", sets: 2, low: 10, high: 15, equip: "machine", group: "legs", cat: "compound" },
+        { name: "Calf Raise", sets: 2, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+      ]},
+      { id: "p4", name: "Push B", exercises: [
+        { name: "Incline Barbell Press", sets: 3, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Dips (Weighted if strong)", sets: 3, low: 6, high: 10, equip: "bodyweight", group: "push", cat: "compound" },
+        { name: "Lateral Raise", sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+      ]},
+      { id: "p5", name: "Pull B", exercises: [
+        { name: "Barbell Row", sets: 3, low: 6, high: 10, equip: "barbell", group: "pull", cat: "compound" },
+        { name: "Lat Pulldown", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+        { name: "Face Pull", sets: 2, low: 12, high: 20, equip: "cable", group: "pull", cat: "isolation" },
+      ]},
+      { id: "p6", name: "Legs B", exercises: [
+        { name: "Front Squat or Hack", sets: 3, low: 6, high: 10, equip: "machine", group: "legs", cat: "compound" },
+        { name: "Leg Curl", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+        { name: "Calf Raise", sets: 2, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+      ]},
+    ],
+  },
+  {
+    id: "fb-3d",
+    name: "Full Body (3 days)",
+    days: [
+      { id: "f1", name: "Full 1", exercises: [
+        { name: "Squat", sets: 3, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Bench Press", sets: 3, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Pull-up", sets: 3, low: 6, high: 10, equip: "bodyweight", group: "pull", cat: "compound" },
+        { name: "Hip Thrust", sets: 3, low: 8, high: 12, equip: "barbell", group: "legs", cat: "compound" },
+      ]},
+      { id: "f2", name: "Full 2", exercises: [
+        { name: "Deadlift", sets: 2, low: 3, high: 5, equip: "barbell", group: "pull", cat: "compound" },
+        { name: "Incline DB Press", sets: 3, low: 8, high: 12, equip: "dumbbell", group: "push", cat: "compound" },
+        { name: "Row (Machine)", sets: 3, low: 8, high: 12, equip: "machine", group: "pull", cat: "compound" },
+        { name: "Lateral Raise", sets: 3, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+      ]},
+      { id: "f3", name: "Full 3", exercises: [
+        { name: "Front Squat", sets: 3, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Overhead Press", sets: 3, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Lat Pulldown", sets: 3, low: 10, high: 12, equip: "machine", group: "pull", cat: "compound" },
+        { name: "Curl + Pushdown (superset)", sets: 3, low: 10, high: 15, equip: "cable", group: "arms", cat: "isolation" },
+      ]},
+    ],
+  },
+  {
+    id: "arnold-6d",
+    name: "Arnold (Chest/Back • Shoulders/Arms • Legs, repeat)",
+    days: [
+      { id: "a1", name: "Chest + Back", exercises: [
+        { name: "Incline Bench Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Pull-up / Pulldown", sets: 4, low: 6, high: 10, equip: "machine", group: "pull", cat: "compound" },
+        { name: "DB Fly", sets: 3, low: 10, high: 15, equip: "dumbbell", group: "push", cat: "isolation" },
+        { name: "Barbell Row", sets: 3, low: 6, high: 10, equip: "barbell", group: "pull", cat: "compound" },
+      ]},
+      { id: "a2", name: "Shoulders + Arms", exercises: [
+        { name: "Overhead Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+        { name: "Lateral Raise", sets: 4, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+        { name: "EZ Curl", sets: 3, low: 8, high: 12, equip: "barbell", group: "pull", cat: "isolation" },
+        { name: "Cable Pushdown", sets: 3, low: 10, high: 15, equip: "cable", group: "push", cat: "isolation" },
+      ]},
+      { id: "a3", name: "Legs", exercises: [
+        { name: "Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+        { name: "Leg Press", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "compound" },
+        { name: "Leg Curl", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+        { name: "Standing Calf", sets: 4, low: 12, high: 20, equip: "machine", group: "legs", cat: "isolation" },
+      ]},
+    ],
+  },
 ];
 
 // ---------- small helpers ----------
 function uid() {
   return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 }
-
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -99,7 +185,6 @@ function LoginScreen() {
       setError(e.message || "Could not sign in.");
     }
   }
-
   async function doSignUp() {
     setError("");
     try {
@@ -119,29 +204,14 @@ function LoginScreen() {
         <p className="text-center text-neutral-400">Sign in to get started</p>
 
         <div className="mt-4 grid gap-2">
-          <input
-            className="input"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
-          />
-          <input
-            className="input"
-            placeholder="Password"
-            value={pass}
-            onChange={(e) => setPass(e.target.value)}
-            type="password"
-          />
-          {mode === "signin" && (
+          <input className="input" placeholder="Email" value={email} onChange={(e)=>setEmail(e.target.value)} type="email" />
+          <input className="input" placeholder="Password" value={pass} onChange={(e)=>setPass(e.target.value)} type="password" />
+          {mode === "signin" ? (
             <button className="btn-primary" onClick={doSignIn}>Sign in</button>
-          )}
-          {mode === "signup" && (
+          ) : (
             <button className="btn-primary" onClick={doSignUp}>Create account</button>
           )}
-          <div className="text-xs text-neutral-400 text-center">
-            Email verification required. We use Firebase Auth free tier.
-          </div>
+          <div className="text-xs text-neutral-400 text-center">Email verification required. We use Firebase Auth free tier.</div>
         </div>
 
         <div className="mt-3 text-center">
@@ -154,9 +224,7 @@ function LoginScreen() {
 
         {!!error && <div className="mt-3 text-sm text-red-400">{error}</div>}
         {mode === "verifySent" && (
-          <div className="mt-3 text-sm text-emerald-400">
-            Verification email sent. Verify, then sign in again.
-          </div>
+          <div className="mt-3 text-sm text-emerald-400">Verification email sent. Verify, then sign in again.</div>
         )}
       </div>
     </div>
@@ -178,7 +246,7 @@ export default function App() {
   const [showImporter, setShowImporter] = useState(false);
 
   // logger scratch state
-  const [work, setWork] = useLocalState("sf.work", null); // the current in-progress workout session
+  const [work, setWork] = useLocalState("sf.work", null); // current in-progress workout session
 
   // ----- auth wiring -----
   useEffect(() => {
@@ -198,16 +266,21 @@ export default function App() {
   function startWorkoutFor(dayIdx) {
     if (!split) return;
     const day = split.days[dayIdx];
-    const entries = [];
-    day.exercises.forEach((ex) => {
-      const sets = Array.from({ length: ex.sets || 3 }, () => ({
+    const entries = day.exercises.map((ex) => ({
+      name: ex.name,
+      low: ex.low || 8,
+      high: ex.high || 12,
+      supersetWith: null, // exercise name it is paired with, if any
+      sets: Array.from({ length: ex.sets || 3 }, () => ({
         weight: "",
         reps: "",
-        rir: "",       // NEW
-        fail: false,   // NEW
-      }));
-      entries.push({ name: ex.name, low: ex.low || 8, high: ex.high || 12, sets });
-    });
+        rir: "",
+        fail: false,
+        drops: [],   // array of {weight,reps,rir,fail}
+      })),
+      desc: "",        // AI description cache per exercise
+      descBusy: false, // loader for describe
+    }));
     setWork({ id: uid(), date: todayISO(), dayName: day.name, entries });
   }
 
@@ -220,6 +293,36 @@ export default function App() {
 
   function discardWorkout() {
     if (confirm("Discard current session?")) setWork(null);
+  }
+
+  // Superset: link current exercise with the previous one (toggle)
+  function toggleSuperset(ei) {
+    if (!work) return;
+    const next = structuredClone(work);
+    if (ei <= 0) return; // need a previous to link to
+    const a = next.entries[ei];
+    const b = next.entries[ei - 1];
+    const linked = a.supersetWith === b.name && b.supersetWith === a.name;
+    if (linked) {
+      a.supersetWith = null;
+      b.supersetWith = null;
+    } else {
+      a.supersetWith = b.name;
+      b.supersetWith = a.name;
+    }
+    setWork(next);
+  }
+
+  // Drop set helpers
+  function addDropSet(ei, si) {
+    const next = structuredClone(work);
+    next.entries[ei].sets[si].drops.push({ weight: "", reps: "", rir: "", fail: false });
+    setWork(next);
+  }
+  function removeDropSet(ei, si, di) {
+    const next = structuredClone(work);
+    next.entries[ei].sets[si].drops.splice(di, 1);
+    setWork(next);
   }
 
   // ----- templates -----
@@ -238,7 +341,7 @@ export default function App() {
   // ----- importer -----
   function onImportConfirm(payload) {
     if (split && !confirm("You already have a split. Overwrite it?")) return;
-    setSplit(payload);     // { name, days }
+    setSplit(payload); // { name, days }
     setShowImporter(false);
     setTab("log");
   }
@@ -278,18 +381,8 @@ export default function App() {
 
         <div className="flex items-center gap-2">
           <div className="pill">
-            <button
-              onClick={() => setUnits("lb")}
-              className={"px-2 py-1 rounded " + (units === "lb" ? "bg-neutral-700" : "")}
-            >
-              lb
-            </button>
-            <button
-              onClick={() => setUnits("kg")}
-              className={"px-2 py-1 rounded " + (units === "kg" ? "bg-neutral-700" : "")}
-            >
-              kg
-            </button>
+            <button onClick={() => setUnits("lb")} className={"px-2 py-1 rounded " + (units === "lb" ? "bg-neutral-700" : "")}>lb</button>
+            <button onClick={() => setUnits("kg")} className={"px-2 py-1 rounded " + (units === "kg" ? "bg-neutral-700" : "")}>kg</button>
           </div>
           <button className="btn" onClick={signOut}>Sign out</button>
         </div>
@@ -301,21 +394,13 @@ export default function App() {
             <h2 className="text-xl font-semibold">Log</h2>
 
             {!split ? (
-              <div className="text-neutral-400">
-                Import a split first, then you can log your session here.
-              </div>
+              <div className="text-neutral-400">Import a split first, then you can log your session here.</div>
             ) : !work ? (
               <div className="grid items-start gap-3 max-w-2xl">
                 <div className="pill">Choose day to log</div>
                 <div className="grid gap-2">
                   {split.days.map((d, i) => (
-                    <button
-                      key={d.id}
-                      className="btn"
-                      onClick={() => {
-                        startWorkoutFor(i);
-                      }}
-                    >
+                    <button key={d.id} className="btn" onClick={() => startWorkoutFor(i)}>
                       Start — {d.name}
                     </button>
                   ))}
@@ -332,89 +417,218 @@ export default function App() {
                 </div>
 
                 <div className="grid gap-3">
-                  {work.entries.map((e, ei) => (
-                    <div key={ei} className="rounded-xl border border-neutral-800 p-3 bg-neutral-900">
-                      <div className="font-semibold">
-                        {e.name} <span className="text-neutral-400 text-sm">({e.low}–{e.high} reps)</span>
-                      </div>
-                      <div className="mt-2 grid gap-2">
-                        {e.sets.map((s, si) => (
-                          <div key={si} className="flex items-center gap-2">
-                            <span className="text-xs text-neutral-400 w-10 shrink-0">Set {si + 1}</span>
-
-                            {/* weight */}
-                            <input
-                              className="input w-[84px]"
-                              inputMode="decimal"
-                              placeholder={`wt (${units})`}
-                              value={s.weight}
-                              onChange={(ev) => {
-                                const next = structuredClone(work);
-                                next.entries[ei].sets[si].weight = ev.target.value;
-                                setWork(next);
-                              }}
-                            />
-
-                            <span className="text-neutral-500 select-none">×</span>
-
-                            {/* reps */}
-                            <input
-                              className="input w-[64px]"
-                              inputMode="numeric"
-                              placeholder="reps"
-                              value={s.reps}
-                              onChange={(ev) => {
-                                const next = structuredClone(work);
-                                next.entries[ei].sets[si].reps = ev.target.value;
-                                setWork(next);
-                              }}
-                            />
-
-                            <span className="text-neutral-500 select-none">×</span>
-
-                            {/* RIR */}
-                            <input
-                              className="input w-[64px]"
-                              inputMode="numeric"
-                              placeholder="RIR"
-                              value={s.rir}
-                              onChange={(ev) => {
-                                const raw = ev.target.value.trim();
-                                const next = structuredClone(work);
-                                next.entries[ei].sets[si].rir = raw;
-                                // typing 0 -> failure
-                                if (raw === "0" || raw === 0) {
-                                  next.entries[ei].sets[si].fail = true;
-                                } else if (next.entries[ei].sets[si].fail && raw !== "") {
-                                  next.entries[ei].sets[si].fail = false;
-                                }
-                                setWork(next);
-                              }}
-                            />
-
-                            {/* Failure toggle syncs with RIR */}
-                            <label className="flex items-center gap-1 text-xs ml-1">
-                              <input
-                                type="checkbox"
-                                checked={!!s.fail}
-                                onChange={(ev) => {
-                                  const next = structuredClone(work);
-                                  next.entries[ei].sets[si].fail = ev.target.checked;
-                                  if (ev.target.checked) {
-                                    next.entries[ei].sets[si].rir = "0";
-                                  } else if (next.entries[ei].sets[si].rir === "0") {
-                                    next.entries[ei].sets[si].rir = "";
-                                  }
-                                  setWork(next);
-                                }}
-                              />
-                              failure
-                            </label>
+                  {work.entries.map((e, ei) => {
+                    const isSuperset = e.supersetWith != null;
+                    return (
+                      <div key={ei} className={"rounded-xl border p-3 bg-neutral-900 " + (isSuperset ? "border-red-600/50" : "border-neutral-800")}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="font-semibold">
+                            {e.name}{" "}
+                            <span className="text-neutral-400 text-sm">({e.low}–{e.high} reps)</span>
+                            {isSuperset && (
+                              <span className="ml-2 text-xs text-red-400 border border-red-700 px-2 py-0.5 rounded-full">
+                                Superset with {e.supersetWith}
+                              </span>
+                            )}
                           </div>
-                        ))}
+                          <div className="flex flex-wrap gap-2">
+                            <button className="btn" onClick={() => toggleSuperset(ei)}>
+                              {isSuperset ? "Unlink superset" : "Superset with previous"}
+                            </button>
+                            {/* Describe (AI) */}
+                            <button
+                              className="btn"
+                              onClick={async () => {
+                                const next = structuredClone(work);
+                                next.entries[ei].descBusy = true;
+                                setWork(next);
+                                try {
+                                  const r = await fetch("/api/describe", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ name: e.name, equip: "", cat: "iso_small" })
+                                  });
+                                  const j = await r.json();
+                                  const text = j?.text || "No description available.";
+                                  const n2 = structuredClone(next);
+                                  n2.entries[ei].desc = text;
+                                  n2.entries[ei].descBusy = false;
+                                  setWork(n2);
+                                } catch {
+                                  const n2 = structuredClone(next);
+                                  n2.entries[ei].desc = "Could not fetch description.";
+                                  n2.entries[ei].descBusy = false;
+                                  setWork(n2);
+                                }
+                              }}
+                            >
+                              {e.descBusy ? "Describing…" : "Describe"}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* AI description display */}
+                        {e.desc && (
+                          <div className="mt-2 text-sm text-neutral-300 rounded-lg border border-neutral-800 p-2 bg-neutral-950">
+                            {e.desc}
+                          </div>
+                        )}
+
+                        {/* Sets */}
+                        <div className="mt-2 grid gap-2">
+                          {e.sets.map((s, si) => (
+                            <div key={si} className="rounded-lg bg-neutral-900 border border-neutral-800 p-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs text-neutral-400 w-10 shrink-0">Set {si + 1}</span>
+
+                                {/* weight */}
+                                <input
+                                  className="input w-[84px]"
+                                  inputMode="decimal"
+                                  placeholder={`wt (${units})`}
+                                  value={s.weight}
+                                  onChange={(ev) => {
+                                    const next = structuredClone(work);
+                                    next.entries[ei].sets[si].weight = ev.target.value;
+                                    setWork(next);
+                                  }}
+                                />
+
+                                <span className="text-neutral-500 select-none">×</span>
+
+                                {/* reps */}
+                                <input
+                                  className="input w-[64px]"
+                                  inputMode="numeric"
+                                  placeholder="reps"
+                                  value={s.reps}
+                                  onChange={(ev) => {
+                                    const next = structuredClone(work);
+                                    next.entries[ei].sets[si].reps = ev.target.value;
+                                    setWork(next);
+                                  }}
+                                />
+
+                                <span className="text-neutral-500 select-none">×</span>
+
+                                {/* RIR */}
+                                <input
+                                  className="input w-[64px]"
+                                  inputMode="numeric"
+                                  placeholder="RIR"
+                                  value={s.rir}
+                                  onChange={(ev) => {
+                                    const raw = ev.target.value.trim();
+                                    const next = structuredClone(work);
+                                    next.entries[ei].sets[si].rir = raw;
+                                    if (raw === "0" || raw === 0) {
+                                      next.entries[ei].sets[si].fail = true;
+                                    } else if (next.entries[ei].sets[si].fail && raw !== "") {
+                                      next.entries[ei].sets[si].fail = false;
+                                    }
+                                    setWork(next);
+                                  }}
+                                />
+
+                                {/* Failure */}
+                                <label className="flex items-center gap-1 text-xs ml-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!s.fail}
+                                    onChange={(ev) => {
+                                      const next = structuredClone(work);
+                                      next.entries[ei].sets[si].fail = ev.target.checked;
+                                      if (ev.target.checked) {
+                                        next.entries[ei].sets[si].rir = "0";
+                                      } else if (next.entries[ei].sets[si].rir === "0") {
+                                        next.entries[ei].sets[si].rir = "";
+                                      }
+                                      setWork(next);
+                                    }}
+                                  />
+                                  failure
+                                </label>
+
+                                {/* Drop set controls */}
+                                <button className="btn ml-auto" onClick={() => addDropSet(ei, si)}>+ Drop set</button>
+                              </div>
+
+                              {/* Drop sets list */}
+                              {!!s.drops?.length && (
+                                <div className="mt-2 grid gap-1">
+                                  {s.drops.map((d, di) => (
+                                    <div key={di} className="flex items-center gap-2">
+                                      <span className="text-[11px] text-neutral-400 w-10 shrink-0">DS {di + 1}</span>
+
+                                      <input
+                                        className="input w-[84px]"
+                                        inputMode="decimal"
+                                        placeholder={`wt (${units})`}
+                                        value={d.weight}
+                                        onChange={(ev) => {
+                                          const next = structuredClone(work);
+                                          next.entries[ei].sets[si].drops[di].weight = ev.target.value;
+                                          setWork(next);
+                                        }}
+                                      />
+                                      <span className="text-neutral-500 select-none">×</span>
+                                      <input
+                                        className="input w-[64px]"
+                                        inputMode="numeric"
+                                        placeholder="reps"
+                                        value={d.reps}
+                                        onChange={(ev) => {
+                                          const next = structuredClone(work);
+                                          next.entries[ei].sets[si].drops[di].reps = ev.target.value;
+                                          setWork(next);
+                                        }}
+                                      />
+                                      <span className="text-neutral-500 select-none">×</span>
+                                      <input
+                                        className="input w-[64px]"
+                                        inputMode="numeric"
+                                        placeholder="RIR"
+                                        value={d.rir}
+                                        onChange={(ev) => {
+                                          const raw = ev.target.value.trim();
+                                          const next = structuredClone(work);
+                                          next.entries[ei].sets[si].drops[di].rir = raw;
+                                          if (raw === "0" || raw === 0) {
+                                            next.entries[ei].sets[si].drops[di].fail = true;
+                                          } else if (next.entries[ei].sets[si].drops[di].fail && raw !== "") {
+                                            next.entries[ei].sets[si].drops[di].fail = false;
+                                          }
+                                          setWork(next);
+                                        }}
+                                      />
+                                      <label className="flex items-center gap-1 text-[11px] ml-1">
+                                        <input
+                                          type="checkbox"
+                                          checked={!!d.fail}
+                                          onChange={(ev) => {
+                                            const next = structuredClone(work);
+                                            next.entries[ei].sets[si].drops[di].fail = ev.target.checked;
+                                            if (ev.target.checked) {
+                                              next.entries[ei].sets[si].drops[di].rir = "0";
+                                            } else if (next.entries[ei].sets[si].drops[di].rir === "0") {
+                                              next.entries[ei].sets[si].drops[di].rir = "";
+                                            }
+                                            setWork(next);
+                                          }}
+                                        />
+                                        failure
+                                      </label>
+                                      <button className="btn" onClick={() => removeDropSet(ei, si, di)}>Remove</button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -496,11 +710,16 @@ export default function App() {
                     <div className="mt-2 grid gap-1 text-sm">
                       {s.entries.map((e, i) => (
                         <div key={i} className="text-neutral-300">
-                          <div className="font-medium">{e.name}</div>
+                          <div className="font-medium">{e.name}{e.supersetWith ? ` (superset with ${e.supersetWith})` : ""}</div>
                           <div className="text-xs text-neutral-400">
                             {e.sets.map((x, xi) => (
-                              <span key={xi} className="mr-2">
-                                [{x.weight || "?"}{units} × {x.reps || "?"}{typeof x.rir === "string" && x.rir !== "" ? ` × RIR ${x.rir}` : ""}{x.fail ? " F" : ""}]
+                              <span key={xi} className="mr-2 block">
+                                Main: [{x.weight || "?"}{units} × {x.reps || "?"}{typeof x.rir === "string" && x.rir !== "" ? ` × RIR ${x.rir}` : ""}{x.fail ? " F" : ""}]
+                                {x.drops?.map((d, di) => (
+                                  <span key={di} className="ml-2">
+                                    • DS {di+1}: [{d.weight || "?"}{units} × {d.reps || "?"}{typeof d.rir === "string" && d.rir !== "" ? ` × RIR ${d.rir}` : ""}{d.fail ? " F" : ""}]
+                                  </span>
+                                ))}
                               </span>
                             ))}
                           </div>

@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { auth } from "./firebase";
 import {
   onAuthStateChanged,
@@ -240,13 +240,11 @@ export default function App() {
   const [tab, setTab] = useLocalState("sf.tab", "log"); // "log" | "split" | "sessions" | "coach"
   const [units, setUnits] = useLocalState("sf.units", "lb"); // lb | kg
   const [split, setSplit] = useLocalState("sf.split", null); // {name, days[]}
-  const [sessions, setSessions] = useLocalState("sf.sessions", []); // [{id,date,dayName,entries:[]}] (local)
+  const [sessions, setSessions] = useLocalState("sf.sessions", []); // saved sessions
+  const [work, setWork] = useLocalState("sf.work", null); // current in-progress workout session
 
   // import modal
   const [showImporter, setShowImporter] = useState(false);
-
-  // logger scratch state
-  const [work, setWork] = useLocalState("sf.work", null); // current in-progress workout session
 
   // ----- auth wiring -----
   useEffect(() => {
@@ -262,6 +260,31 @@ export default function App() {
     window.location.replace(window.location.origin + window.location.pathname);
   }
 
+  // Build history for an exercise name from saved sessions (last 6 sessions max)
+  const buildHistory = (name) => {
+    const hist = [];
+    for (const s of sessions) {
+      for (const e of s.entries || []) {
+        if (e.name === name) {
+          // flatten sets; keep only numeric entries
+          for (const set of e.sets || []) {
+            const w = Number(set.weight);
+            const r = Number(set.reps);
+            if (!Number.isFinite(w) || !Number.isFinite(r)) continue;
+            hist.push({
+              date: s.date,
+              weight: w,
+              reps: r,
+              fail: !!set.fail,
+            });
+          }
+        }
+      }
+    }
+    // bias latest first
+    return hist.slice(-18).reverse(); // up to ~18 recent sets
+  };
+
   // ----- logging helpers -----
   function startWorkoutFor(dayIdx) {
     if (!split) return;
@@ -270,16 +293,19 @@ export default function App() {
       name: ex.name,
       low: ex.low || 8,
       high: ex.high || 12,
-      supersetWith: null, // exercise name it is paired with, if any
+      supersetWith: null,
+      // per-exercise AI outputs
+      desc: "", descBusy: false,
+      suggestBusy: false, suggestOut: null, suggestErr: "",
+      warmupBusy: false, warmupOut: null, warmupErr: "",
+      restBusy: false, restSec: null, restErr: "",
       sets: Array.from({ length: ex.sets || 3 }, () => ({
         weight: "",
         reps: "",
         rir: "",
         fail: false,
-        drops: [],   // array of {weight,reps,rir,fail}
+        drops: [], // {weight,reps,rir,fail}
       })),
-      desc: "",        // AI description cache per exercise
-      descBusy: false, // loader for describe
     }));
     setWork({ id: uid(), date: todayISO(), dayName: day.name, entries });
   }
@@ -295,21 +321,16 @@ export default function App() {
     if (confirm("Discard current session?")) setWork(null);
   }
 
-  // Superset: link current exercise with the previous one (toggle)
+  // Superset: link with previous exercise
   function toggleSuperset(ei) {
     if (!work) return;
     const next = structuredClone(work);
-    if (ei <= 0) return; // need a previous to link to
+    if (ei <= 0) return;
     const a = next.entries[ei];
     const b = next.entries[ei - 1];
     const linked = a.supersetWith === b.name && b.supersetWith === a.name;
-    if (linked) {
-      a.supersetWith = null;
-      b.supersetWith = null;
-    } else {
-      a.supersetWith = b.name;
-      b.supersetWith = a.name;
-    }
+    a.supersetWith = linked ? null : b.name;
+    b.supersetWith = linked ? null : a.name;
     setWork(next);
   }
 
@@ -419,22 +440,69 @@ export default function App() {
                 <div className="grid gap-3">
                   {work.entries.map((e, ei) => {
                     const isSuperset = e.supersetWith != null;
+
+                    // make a tiny memoized history to send to suggest
+                    const history = useMemo(() => buildHistory(e.name), [sessions, e.name]);
+
                     return (
                       <div key={ei} className={"rounded-xl border p-3 bg-neutral-900 " + (isSuperset ? "border-red-600/50" : "border-neutral-800")}>
                         <div className="flex items-start justify-between gap-2">
-                          <div className="font-semibold">
-                            {e.name}{" "}
-                            <span className="text-neutral-400 text-sm">({e.low}–{e.high} reps)</span>
-                            {isSuperset && (
-                              <span className="ml-2 text-xs text-red-400 border border-red-700 px-2 py-0.5 rounded-full">
-                                Superset with {e.supersetWith}
-                              </span>
-                            )}
+                          <div>
+                            <div className="font-semibold">
+                              {e.name}{" "}
+                              <span className="text-neutral-400 text-sm">({e.low}–{e.high} reps)</span>
+                              {isSuperset && (
+                                <span className="ml-2 text-xs text-red-400 border border-red-700 px-2 py-0.5 rounded-full">
+                                  Superset with {e.supersetWith}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Rest hint line */}
+                            <div className="text-xs text-neutral-400 mt-1">
+                              Rest: {e.restBusy ? "calculating…" : (e.restSec ? `${Math.round(e.restSec)}s` : "—")}
+                              <button
+                                title="Recalculate rest"
+                                className="ml-2 underline decoration-dotted"
+                                onClick={async () => {
+                                  const next = structuredClone(work);
+                                  next.entries[ei].restBusy = true; next.entries[ei].restErr = "";
+                                  setWork(next);
+                                  try {
+                                    // estimate intensity from last entered set (or use high)
+                                    const last = e.sets.slice().reverse().find(s => s.reps || s.rir || s.fail || s.weight);
+                                    const payload = {
+                                      name: e.name,
+                                      reps: Number(last?.reps || e.low),
+                                      rir: typeof last?.rir === "string" && last?.rir !== "" ? Number(last.rir) : (last?.fail ? 0 : 2),
+                                      isCompound: /squat|deadlift|bench|press|row|pull/i.test(e.name),
+                                    };
+                                    const r = await fetch("/api/rest", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(payload) });
+                                    const j = await r.json();
+                                    const out = Number(j?.seconds || 0);
+                                    const n2 = structuredClone(next);
+                                    n2.entries[ei].restSec = Number.isFinite(out) && out > 0 ? out : 90;
+                                    n2.entries[ei].restBusy = false;
+                                    setWork(n2);
+                                  } catch (err) {
+                                    const n2 = structuredClone(next);
+                                    n2.entries[ei].restBusy = false;
+                                    n2.entries[ei].restErr = "rest calc failed";
+                                    setWork(n2);
+                                  }
+                                }}
+                              >
+                                ↻
+                              </button>
+                              {e.restErr && <span className="ml-2 text-red-400">{e.restErr}</span>}
+                            </div>
                           </div>
+
                           <div className="flex flex-wrap gap-2">
                             <button className="btn" onClick={() => toggleSuperset(ei)}>
                               {isSuperset ? "Unlink superset" : "Superset with previous"}
                             </button>
+
                             {/* Describe (AI) */}
                             <button
                               className="btn"
@@ -464,6 +532,76 @@ export default function App() {
                             >
                               {e.descBusy ? "Describing…" : "Describe"}
                             </button>
+
+                            {/* Suggest (AI) */}
+                            <button
+                              className="btn"
+                              onClick={async () => {
+                                const next = structuredClone(work);
+                                next.entries[ei].suggestBusy = true; next.entries[ei].suggestErr = "";
+                                setWork(next);
+                                try {
+                                  const failureFlags = (history || []).map(h => !!h.fail);
+                                  const body = {
+                                    name: e.name,
+                                    history,
+                                    targetLow: e.low,
+                                    targetHigh: e.high,
+                                    units,
+                                    bodyweight: /pull-up|chin-up|dip|push-up|handstand/i.test(e.name),
+                                    failureFlags
+                                  };
+                                  const r = await fetch("/api/suggest", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+                                  const j = await r.json();
+                                  const out = j?.next || j || null;
+                                  const n2 = structuredClone(next);
+                                  n2.entries[ei].suggestOut = out;
+                                  n2.entries[ei].suggestBusy = false;
+                                  setWork(n2);
+                                } catch (err) {
+                                  const n2 = structuredClone(next);
+                                  n2.entries[ei].suggestBusy = false;
+                                  n2.entries[ei].suggestErr = "suggest failed";
+                                  setWork(n2);
+                                }
+                              }}
+                            >
+                              {e.suggestBusy ? "Suggesting…" : "Suggest"}
+                            </button>
+
+                            {/* Warm-up (AI) */}
+                            <button
+                              className="btn"
+                              onClick={async () => {
+                                const next = structuredClone(work);
+                                next.entries[ei].warmupBusy = true; next.entries[ei].warmupErr = "";
+                                setWork(next);
+                                try {
+                                  // choose a target for warmup: suggested weight or recent working set
+                                  const target =
+                                    Number(e.suggestOut?.weight) ||
+                                    Number((history && history.find(h => Number.isFinite(h.weight)))?.weight) ||
+                                    0;
+                                  const r = await fetch("/api/warmup", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ name: e.name, units, target })
+                                  });
+                                  const j = await r.json();
+                                  const n2 = structuredClone(next);
+                                  n2.entries[ei].warmupOut = j || null;
+                                  n2.entries[ei].warmupBusy = false;
+                                  setWork(n2);
+                                } catch (err) {
+                                  const n2 = structuredClone(next);
+                                  n2.entries[ei].warmupBusy = false;
+                                  n2.entries[ei].warmupErr = "warm-up failed";
+                                  setWork(n2);
+                                }
+                              }}
+                            >
+                              {e.warmupBusy ? "Planning…" : "Warm-up"}
+                            </button>
                           </div>
                         </div>
 
@@ -473,6 +611,69 @@ export default function App() {
                             {e.desc}
                           </div>
                         )}
+
+                        {/* Suggest output display + apply */}
+                        {e.suggestOut && (
+                          <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950 p-2 text-sm">
+                            <div className="font-medium">Suggested next set</div>
+                            <div className="text-neutral-300 mt-1">
+                              {typeof e.suggestOut.weight === "number" ? `${e.suggestOut.weight}${units}` : "—"}{" "}
+                              {typeof e.suggestOut.reps === "number" ? `× ${e.suggestOut.reps}` : ""}
+                            </div>
+                            {e.suggestOut.note && (
+                              <div className="text-neutral-400 text-xs mt-1">{e.suggestOut.note}</div>
+                            )}
+                            <div className="mt-2 flex gap-2">
+                              <button
+                                className="btn"
+                                onClick={() => {
+                                  // apply to the first empty set row
+                                  const next = structuredClone(work);
+                                  const row = next.entries[ei].sets.find(s => !s.weight && !s.reps);
+                                  if (row) {
+                                    if (typeof e.suggestOut.weight === "number") row.weight = String(e.suggestOut.weight);
+                                    if (typeof e.suggestOut.reps === "number") row.reps = String(e.suggestOut.reps);
+                                  }
+                                  setWork(next);
+                                }}
+                              >
+                                Apply to next empty set
+                              </button>
+                              <button
+                                className="btn"
+                                onClick={() => {
+                                  const next = structuredClone(work);
+                                  next.entries[ei].suggestOut = null;
+                                  setWork(next);
+                                }}
+                              >
+                                Dismiss
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {e.suggestErr && <div className="mt-2 text-xs text-red-400">{e.suggestErr}</div>}
+
+                        {/* Warm-up output display */}
+                        {e.warmupOut && (
+                          <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950 p-2 text-sm">
+                            <div className="font-medium">Warm-up plan</div>
+                            <ol className="list-decimal pl-5 mt-1 text-neutral-300">
+                              {(e.warmupOut.steps || []).map((st, idx) => (
+                                <li key={idx}>
+                                  {st.percent ? `${Math.round(st.percent*100)}%` : ""}
+                                  {st.weight ? ` • ${st.weight}${units}` : ""}
+                                  {st.reps ? ` × ${st.reps}` : ""}
+                                  {st.note ? ` — ${st.note}` : ""}
+                                </li>
+                              ))}
+                            </ol>
+                            {!e.warmupOut.steps?.length && (
+                              <div className="text-neutral-400">No warm-up steps returned.</div>
+                            )}
+                          </div>
+                        )}
+                        {e.warmupErr && <div className="mt-2 text-xs text-red-400">{e.warmupErr}</div>}
 
                         {/* Sets */}
                         <div className="mt-2 grid gap-2">

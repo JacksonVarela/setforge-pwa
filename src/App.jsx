@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { auth } from "./firebase";
 import {
   onAuthStateChanged,
@@ -135,24 +135,24 @@ const TEMPLATES = [
     id: "arnold-6d",
     name: "Arnold (Chest/Back • Shoulders/Arms • Legs, repeat)",
     days: [
-      { id: "a1", name: "Chest + Back", exercises: [
-        { name: "Incline Bench Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
-        { name: "Pull-up / Pulldown", sets: 4, low: 6, high: 10, equip: "machine", group: "pull", cat: "compound" },
-        { name: "DB Fly", sets: 3, low: 10, high: 15, equip: "dumbbell", group: "push", cat: "isolation" },
-        { name: "Barbell Row", sets: 3, low: 6, high: 10, equip: "barbell", group: "pull", cat: "compound" },
-      ]},
-      { id: "a2", name: "Shoulders + Arms", exercises: [
-        { name: "Overhead Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
-        { name: "Lateral Raise", sets: 4, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
-        { name: "EZ Curl", sets: 3, low: 8, high: 12, equip: "barbell", group: "pull", cat: "isolation" },
-        { name: "Cable Pushdown", sets: 3, low: 10, high: 15, equip: "cable", group: "push", cat: "isolation" },
-      ]},
-      { id: "a3", name: "Legs", exercises: [
-        { name: "Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
-        { name: "Leg Press", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "compound" },
-        { name: "Leg Curl", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
-        { name: "Standing Calf", sets: 4, low: 12, high: 20, equip: "machine", group: "legs", cat: "isolation" },
-      ]},
+        { id: "a1", name: "Chest + Back", exercises: [
+          { name: "Incline Bench Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+          { name: "Pull-up / Pulldown", sets: 4, low: 6, high: 10, equip: "machine", group: "pull", cat: "compound" },
+          { name: "DB Fly", sets: 3, low: 10, high: 15, equip: "dumbbell", group: "push", cat: "isolation" },
+          { name: "Barbell Row", sets: 3, low: 6, high: 10, equip: "barbell", group: "pull", cat: "compound" },
+        ]},
+        { id: "a2", name: "Shoulders + Arms", exercises: [
+          { name: "Overhead Press", sets: 4, low: 6, high: 10, equip: "barbell", group: "push", cat: "compound" },
+          { name: "Lateral Raise", sets: 4, low: 12, high: 20, equip: "dumbbell", group: "push", cat: "isolation" },
+          { name: "EZ Curl", sets: 3, low: 8, high: 12, equip: "barbell", group: "pull", cat: "isolation" },
+          { name: "Cable Pushdown", sets: 3, low: 10, high: 15, equip: "cable", group: "push", cat: "isolation" },
+        ]},
+        { id: "a3", name: "Legs", exercises: [
+          { name: "Squat", sets: 4, low: 5, high: 8, equip: "barbell", group: "legs", cat: "compound" },
+          { name: "Leg Press", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "compound" },
+          { name: "Leg Curl", sets: 3, low: 10, high: 15, equip: "machine", group: "legs", cat: "isolation" },
+          { name: "Standing Calf", sets: 4, low: 12, high: 20, equip: "machine", group: "legs", cat: "isolation" },
+        ]},
     ],
   },
 ];
@@ -242,8 +242,6 @@ export default function App() {
   const [split, setSplit] = useLocalState("sf.split", null); // {name, days[]}
   const [sessions, setSessions] = useLocalState("sf.sessions", []); // saved sessions
   const [work, setWork] = useLocalState("sf.work", null); // current in-progress workout session
-
-  // import modal
   const [showImporter, setShowImporter] = useState(false);
 
   // ----- auth wiring -----
@@ -260,29 +258,22 @@ export default function App() {
     window.location.replace(window.location.origin + window.location.pathname);
   }
 
-  // Build history for an exercise name from saved sessions (last 6 sessions max)
+  // Build history for an exercise name from saved sessions (last ~18 sets)
   const buildHistory = (name) => {
     const hist = [];
     for (const s of sessions) {
       for (const e of s.entries || []) {
         if (e.name === name) {
-          // flatten sets; keep only numeric entries
           for (const set of e.sets || []) {
             const w = Number(set.weight);
             const r = Number(set.reps);
             if (!Number.isFinite(w) || !Number.isFinite(r)) continue;
-            hist.push({
-              date: s.date,
-              weight: w,
-              reps: r,
-              fail: !!set.fail,
-            });
+            hist.push({ date: s.date, weight: w, reps: r, fail: !!set.fail });
           }
         }
       }
     }
-    // bias latest first
-    return hist.slice(-18).reverse(); // up to ~18 recent sets
+    return hist.slice(-18).reverse();
   };
 
   // ----- logging helpers -----
@@ -294,7 +285,6 @@ export default function App() {
       low: ex.low || 8,
       high: ex.high || 12,
       supersetWith: null,
-      // per-exercise AI outputs
       desc: "", descBusy: false,
       suggestBusy: false, suggestOut: null, suggestErr: "",
       warmupBusy: false, warmupOut: null, warmupErr: "",
@@ -304,7 +294,7 @@ export default function App() {
         reps: "",
         rir: "",
         fail: false,
-        drops: [], // {weight,reps,rir,fail}
+        drops: [],
       })),
     }));
     setWork({ id: uid(), date: todayISO(), dayName: day.name, entries });
@@ -321,7 +311,6 @@ export default function App() {
     if (confirm("Discard current session?")) setWork(null);
   }
 
-  // Superset: link with previous exercise
   function toggleSuperset(ei) {
     if (!work) return;
     const next = structuredClone(work);
@@ -334,7 +323,6 @@ export default function App() {
     setWork(next);
   }
 
-  // Drop set helpers
   function addDropSet(ei, si) {
     const next = structuredClone(work);
     next.entries[ei].sets[si].drops.push({ weight: "", reps: "", rir: "", fail: false });
@@ -346,7 +334,6 @@ export default function App() {
     setWork(next);
   }
 
-  // ----- templates -----
   function applyTemplate(t) {
     if (split && !confirm("You already have a split. Overwrite it?")) return;
     const days = t.days.map((d) => ({
@@ -359,25 +346,15 @@ export default function App() {
     setTab("log");
   }
 
-  // ----- importer -----
   function onImportConfirm(payload) {
     if (split && !confirm("You already have a split. Overwrite it?")) return;
-    setSplit(payload); // { name, days }
+    setSplit(payload);
     setShowImporter(false);
     setTab("log");
   }
 
-  // --------------------------------------------------
-  // RENDER BRANCHES
-  // --------------------------------------------------
-
-  if (!authReady) {
-    return <div className="min-h-screen grid place-items-center text-neutral-400">Loading…</div>;
-  }
-
-  if (!user) {
-    return <LoginScreen />;
-  }
+  if (!authReady) return <div className="min-h-screen grid place-items-center text-neutral-400">Loading…</div>;
+  if (!user) return <LoginScreen />;
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] safe-px safe-pt safe-pb">
@@ -440,9 +417,7 @@ export default function App() {
                 <div className="grid gap-3">
                   {work.entries.map((e, ei) => {
                     const isSuperset = e.supersetWith != null;
-
-                    // make a tiny memoized history to send to suggest
-                    const history = useMemo(() => buildHistory(e.name), [sessions, e.name]);
+                    const history = buildHistory(e.name); // ✅ fixed: no hooks in loops
 
                     return (
                       <div key={ei} className={"rounded-xl border p-3 bg-neutral-900 " + (isSuperset ? "border-red-600/50" : "border-neutral-800")}>
@@ -469,7 +444,6 @@ export default function App() {
                                   next.entries[ei].restBusy = true; next.entries[ei].restErr = "";
                                   setWork(next);
                                   try {
-                                    // estimate intensity from last entered set (or use high)
                                     const last = e.sets.slice().reverse().find(s => s.reps || s.rir || s.fail || s.weight);
                                     const payload = {
                                       name: e.name,
@@ -484,7 +458,7 @@ export default function App() {
                                     n2.entries[ei].restSec = Number.isFinite(out) && out > 0 ? out : 90;
                                     n2.entries[ei].restBusy = false;
                                     setWork(n2);
-                                  } catch (err) {
+                                  } catch {
                                     const n2 = structuredClone(next);
                                     n2.entries[ei].restBusy = false;
                                     n2.entries[ei].restErr = "rest calc failed";
@@ -558,7 +532,7 @@ export default function App() {
                                   n2.entries[ei].suggestOut = out;
                                   n2.entries[ei].suggestBusy = false;
                                   setWork(n2);
-                                } catch (err) {
+                                } catch {
                                   const n2 = structuredClone(next);
                                   n2.entries[ei].suggestBusy = false;
                                   n2.entries[ei].suggestErr = "suggest failed";
@@ -577,7 +551,6 @@ export default function App() {
                                 next.entries[ei].warmupBusy = true; next.entries[ei].warmupErr = "";
                                 setWork(next);
                                 try {
-                                  // choose a target for warmup: suggested weight or recent working set
                                   const target =
                                     Number(e.suggestOut?.weight) ||
                                     Number((history && history.find(h => Number.isFinite(h.weight)))?.weight) ||
@@ -592,7 +565,7 @@ export default function App() {
                                   n2.entries[ei].warmupOut = j || null;
                                   n2.entries[ei].warmupBusy = false;
                                   setWork(n2);
-                                } catch (err) {
+                                } catch {
                                   const n2 = structuredClone(next);
                                   n2.entries[ei].warmupBusy = false;
                                   n2.entries[ei].warmupErr = "warm-up failed";
@@ -605,14 +578,12 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* AI description display */}
                         {e.desc && (
                           <div className="mt-2 text-sm text-neutral-300 rounded-lg border border-neutral-800 p-2 bg-neutral-950">
                             {e.desc}
                           </div>
                         )}
 
-                        {/* Suggest output display + apply */}
                         {e.suggestOut && (
                           <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950 p-2 text-sm">
                             <div className="font-medium">Suggested next set</div>
@@ -627,7 +598,6 @@ export default function App() {
                               <button
                                 className="btn"
                                 onClick={() => {
-                                  // apply to the first empty set row
                                   const next = structuredClone(work);
                                   const row = next.entries[ei].sets.find(s => !s.weight && !s.reps);
                                   if (row) {
@@ -654,7 +624,6 @@ export default function App() {
                         )}
                         {e.suggestErr && <div className="mt-2 text-xs text-red-400">{e.suggestErr}</div>}
 
-                        {/* Warm-up output display */}
                         {e.warmupOut && (
                           <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950 p-2 text-sm">
                             <div className="font-medium">Warm-up plan</div>
@@ -682,7 +651,6 @@ export default function App() {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-xs text-neutral-400 w-10 shrink-0">Set {si + 1}</span>
 
-                                {/* weight */}
                                 <input
                                   className="input w-[84px]"
                                   inputMode="decimal"
@@ -697,7 +665,6 @@ export default function App() {
 
                                 <span className="text-neutral-500 select-none">×</span>
 
-                                {/* reps */}
                                 <input
                                   className="input w-[64px]"
                                   inputMode="numeric"
@@ -712,7 +679,6 @@ export default function App() {
 
                                 <span className="text-neutral-500 select-none">×</span>
 
-                                {/* RIR */}
                                 <input
                                   className="input w-[64px]"
                                   inputMode="numeric"
@@ -731,7 +697,6 @@ export default function App() {
                                   }}
                                 />
 
-                                {/* Failure */}
                                 <label className="flex items-center gap-1 text-xs ml-1">
                                   <input
                                     type="checkbox"
@@ -750,11 +715,9 @@ export default function App() {
                                   failure
                                 </label>
 
-                                {/* Drop set controls */}
                                 <button className="btn ml-auto" onClick={() => addDropSet(ei, si)}>+ Drop set</button>
                               </div>
 
-                              {/* Drop sets list */}
                               {!!s.drops?.length && (
                                 <div className="mt-2 grid gap-1">
                                   {s.drops.map((d, di) => (
@@ -881,7 +844,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Importer modal */}
             {showImporter && (
               <div className="fixed inset-0 bg-black/60 grid place-items-center p-2 z-50">
                 <div className="w-full max-w-5xl bg-neutral-950 border border-neutral-800 rounded-2xl p-3">
